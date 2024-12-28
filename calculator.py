@@ -13,10 +13,10 @@ class Params:
     # Durations
     years_accum = age_retire - age_start  # e.g. 29
     years_payout = age_death_you - age_retire  # e.g. 18
-    glide_path_years = 20  # number of years to shift from equity to bonds post-67
+    glide_path_years = 10  # number of years to shift from equity to bonds post-67
 
     # Annual contributions
-    annual_contribution = 16000
+    annual_contribution = 21000
 
     pension_fee = 0.003
     fund_fee = 0.002
@@ -27,11 +27,6 @@ class Params:
     bond_mean = 0.04
     bond_std = 0.05
 
-    # Accumulation returns
-    r_broker_accum = equity_mean - fund_fee
-    r_ruerup_accum = equity_mean - pension_fee - fund_fee
-    r_level3_accum = equity_mean - pension_fee - fund_fee
-
     # Taxes
     cg_tax_normal = 0.26375  # 26.375% normal CG
     cg_tax_half = 0.26375 / 2  # ~13.1875% for Level3 lumpsum at 67
@@ -39,19 +34,21 @@ class Params:
 
     # Rürup annuity rate
     ruerup_ann_rate = 0.04
+    ruerup_dist_fee = 0.015
 
     # Marginal tax while working => invests refund in scenario B,D
     tax_working = 0.4431
 
     # Desired net annual spending
-    inflation = 0.02
-    desired_spend = 48000.0 * ((1 + inflation) ** years_accum)
+    inflation_mean = 0.02
+    inflation_std = 0.01
+    desired_spend = 48000.0 * ((1 + inflation_mean) ** years_accum)
 
     # Number of Monte Carlo runs
-    num_sims = 1000
+    num_sims = 10000
 
     # Discount rate for net present value
-    discount_rate = 0.00
+    discount_rate = 0.01
 
 
 # --------------------------------------------------------
@@ -127,10 +124,10 @@ def scenarioA_accum(p: Params):
     pot = 0.0
     basis = 0.0
     for _ in range(p.years_accum):
-        pot *= 1 + p.r_broker_accum
+        pot *= 1 + p.equity_mean - p.fund_fee
         pot += p.annual_contribution
         basis += p.annual_contribution
-    pot *= 1 + p.r_broker_accum
+    pot *= 1 + p.equity_mean - p.fund_fee
     return pot, basis
 
 
@@ -139,15 +136,17 @@ def scenarioB_accum(p: Params):
     br = 0.0
     br_bs = 0.0
     for _ in range(p.years_accum):
-        rpot *= 1 + p.r_ruerup_accum
+        eqr = p.equity_mean
+        rpot *= 1 + eqr - p.fund_fee - p.pension_fee
         rpot += p.annual_contribution
 
         ref_ = p.annual_contribution * p.tax_working
-        br *= 1 + p.r_broker_accum
+        br *= 1 + eqr - p.fund_fee
         br += ref_
         br_bs += ref_
-    rpot *= 1 + p.r_ruerup_accum
-    br *= 1 + p.r_broker_accum
+    eqr = p.equity_mean
+    rpot *= 1 + eqr - p.fund_fee - p.pension_fee
+    br *= 1 + eqr - p.fund_fee
     return rpot, br, br_bs
 
 
@@ -155,10 +154,10 @@ def scenarioC_accum(p: Params):
     pot = 0.0
     bs = 0.0
     for _ in range(p.years_accum):
-        pot *= 1 + p.r_level3_accum
+        pot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
         pot += p.annual_contribution
         bs += p.annual_contribution
-    pot *= 1 + p.r_level3_accum
+    pot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
     return pot, bs
 
 
@@ -167,15 +166,17 @@ def scenarioD_accum(p: Params):
     l3 = 0.0
     l3_bs = 0.0
     for _ in range(p.years_accum):
-        rp *= 1 + p.r_ruerup_accum
+        eqr = p.equity_mean
+        rp *= 1 + eqr - p.fund_fee - p.pension_fee
         rp += p.annual_contribution
 
         ref_ = p.annual_contribution * p.tax_working
-        l3 *= 1 + p.r_level3_accum
+        l3 *= 1 + eqr - p.fund_fee - p.pension_fee
         l3 += ref_
         l3_bs += ref_
-    rp *= 1 + p.r_ruerup_accum
-    l3 *= 1 + p.r_level3_accum
+    eqr = p.equity_mean
+    rp *= 1 + eqr - p.fund_fee - p.pension_fee
+    l3 *= 1 + eqr - p.fund_fee - p.pension_fee
     return rp, l3, l3_bs
 
 
@@ -184,20 +185,20 @@ def scenarioD_accum(p: Params):
 # --------------------------------------------------------
 def scenarioA_montecarlo(p: Params):
     # Accumulate
-    pot, bs = scenarioA_accum(p)
     # At 67, entire pot is in eq? We can start eq=pot, eq_bs=bs, bd=0, bd_bs=0
 
     results = []
     result_pot = []
     outcount = 0
     for _ in range(p.num_sims):
-        total_net = 0.0
+        pot, bs = scenarioA_accum(p)
         total_spend = 0.0
         ran_out = False
         eq = pot
         eq_bs = bs
         bd = 0.0
         bd_bs = 0.0
+        spend_year = p.desired_spend
         for t in range(p.years_payout):
             if t < p.glide_path_years:
                 fraction = 1.0 / p.glide_path_years
@@ -211,10 +212,9 @@ def scenarioA_montecarlo(p: Params):
 
             # partial withdrawal
             gross, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = (
-                solve_gross_for_net(
-                    eq, bd, eq_bs, bd_bs, p.desired_spend, p.cg_tax_normal
-                )
+                solve_gross_for_net(eq, bd, eq_bs, bd_bs, spend_year, p.cg_tax_normal)
             )
+            spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
 
             eq = eq_after
             bd = bd_after
@@ -249,7 +249,7 @@ def scenarioB_montecarlo(p: Params):
     rp, br, br_bs = scenarioB_accum(p)
     # Rürup => annuity net each year
     gross_ann = rp * p.ruerup_ann_rate
-    net_ann = gross_ann * (1 - p.ruerup_tax)
+    net_ann = gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
 
     # The broker pot => eq=br, eq_bs=br_bs, bd=0, bd_bs=0
     results = []
@@ -263,6 +263,7 @@ def scenarioB_montecarlo(p: Params):
 
         total_spend = 0.0
         ran_out = False
+        spend_year = p.desired_spend
 
         for t in range(p.years_payout):
             # SHIFT eq->bond
@@ -278,13 +279,14 @@ def scenarioB_montecarlo(p: Params):
             eq *= 1 + eq_r
             bd *= 1 + bd_r
 
-            needed = p.desired_spend - net_ann
+            needed = spend_year - net_ann
             if needed < 0:
                 needed = 0
             # partial withdrawal
             gross, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = (
                 solve_gross_for_net(eq, bd, eq_bs, bd_bs, needed, p.cg_tax_normal)
             )
+            spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
 
             eq = eq_after
             bd = bd_after
@@ -339,6 +341,7 @@ def scenarioC_montecarlo(p: Params):
 
         total_spend = 0.0
         ran_out = False
+        spend_year = p.desired_spend
 
         for t in range(p.years_payout):
             # SHIFT
@@ -357,9 +360,10 @@ def scenarioC_montecarlo(p: Params):
             # partial withdrawal
             gross, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = (
                 solve_gross_for_net(
-                    eq, bd, eq_bs, bd_bs, p.desired_spend, p.cg_tax_normal
+                    eq, bd, eq_bs, bd_bs, spend_year, p.cg_tax_normal
                 )
             )
+            spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
             eq = eq_after
             bd = bd_after
             eq_bs = eq_bs_after
@@ -394,7 +398,7 @@ def scenarioD_montecarlo(p: Params):
     rp, l3, l3_bs = scenarioD_accum(p)
     # 1) Rürup => annuity net each year
     gross_annu = rp * p.ruerup_ann_rate
-    net_annu = gross_annu * (1 - p.ruerup_tax)
+    net_annu = gross_annu * (1 - p.ruerup_tax - p.ruerup_dist_fee)
 
     # 2) lumpsum L3 => half CG
     gains = max(0, l3 - l3_bs)
@@ -417,6 +421,7 @@ def scenarioD_montecarlo(p: Params):
 
         total_spend = 0.0
         ran_out = False
+        spend_year = p.desired_spend
 
         for t in range(p.years_payout):
             # SHIFT eq->bond
@@ -432,7 +437,7 @@ def scenarioD_montecarlo(p: Params):
             eq *= 1 + eq_r
             bd *= 1 + bd_r
 
-            needed = p.desired_spend - net_annu
+            needed = spend_year - net_annu
             if needed < 0:
                 needed = 0
 
@@ -440,6 +445,7 @@ def scenarioD_montecarlo(p: Params):
                 solve_gross_for_net(eq, bd, eq_bs, bd_bs, needed, p.cg_tax_normal)
             )
 
+            spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
             eq = eq_after
             bd = bd_after
             eq_bs = eq_bs_after
