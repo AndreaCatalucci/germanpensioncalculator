@@ -8,11 +8,10 @@ class Params:
     # Ages
     age_start = 38
     age_retire = 67
-    age_death_you = 85
+    gender = 'M'
 
     # Durations
     years_accum = age_retire - age_start  # e.g. 29
-    years_payout = age_death_you - age_retire  # e.g. 18
     glide_path_years = 10  # number of years to shift from equity to bonds post-67
 
     # Annual contributions
@@ -50,6 +49,116 @@ class Params:
     # Discount rate for net present value
     discount_rate = 0.01
 
+
+def sample_lifetime_from67(gender="M", size=10000):
+    """
+    Returns an array of 'size' random ages of death, where death occurs
+    at or after age 67. The distribution depends on 'gender':
+      - 'M' = male
+      - 'F' = female
+    We assume a discrete distribution from 67 to 105.
+    """
+
+    # 1) Define the range of ages (67..105).
+    ages = np.arange(67, 106)
+
+    # 2) Define approximate PMFs for M vs. F.
+    #    In reality, you'd use real life-table data (destatis or insurers).
+    
+    if gender == "M":
+        # Typically a slightly earlier mortality distribution
+        pdf = np.array([
+            0.006,  # 67
+            0.006,  # 68
+            0.008,  # 69
+            0.010,  # 70
+            0.015,  # 71
+            0.020,  # 72
+            0.025,  # 73
+            0.030,  # 74
+            0.040,  # 75
+            0.050,  # 76
+            0.060,  # 77
+            0.065,  # 78
+            0.070,  # 79
+            0.080,  # 80
+            0.085,  # 81
+            0.090,  # 82
+            0.095,  # 83
+            0.095,  # 84
+            0.090,  # 85
+            0.080,  # 86
+            0.070,  # 87
+            0.060,  # 88
+            0.045,  # 89
+            0.035,  # 90
+            0.025,  # 91
+            0.020,  # 92
+            0.015,  # 93
+            0.010,  # 94
+            0.007,  # 95
+            0.005,  # 96
+            0.003,  # 97
+            0.003,  # 98
+            0.002,  # 99
+            0.001,  # 100
+            0.001,  # 101
+            0.001,  # 102
+            0.001,  # 103
+            0.001,  # 104
+            0.001,  # 105
+        ])
+    else:
+        # 'F' typically lives slightly longer, so shift probabilities a bit
+        pdf = np.array([
+            0.005,  # 67
+            0.005,  # 68
+            0.006,  # 69
+            0.008,  # 70
+            0.012,  # 71
+            0.015,  # 72
+            0.020,  # 73
+            0.025,  # 74
+            0.030,  # 75
+            0.040,  # 76
+            0.050,  # 77
+            0.055,  # 78
+            0.060,  # 79
+            0.070,  # 80
+            0.075,  # 81
+            0.080,  # 82
+            0.085,  # 83
+            0.090,  # 84
+            0.090,  # 85
+            0.080,  # 86
+            0.070,  # 87
+            0.060,  # 88
+            0.050,  # 89
+            0.040,  # 90
+            0.030,  # 91
+            0.025,  # 92
+            0.020,  # 93
+            0.015,  # 94
+            0.010,  # 95
+            0.007,  # 96
+            0.005,  # 97
+            0.003,  # 98
+            0.002,  # 99
+            0.002,  # 100
+            0.001,  # 101
+            0.001,  # 102
+            0.001,  # 103
+            0.001,  # 104
+            0.001,  # 105
+        ])
+
+    # Normalize so probabilities sum to 1
+    pdf /= pdf.sum()
+
+    # 3) Sample from the discrete distribution using np.random.choice
+    draws = np.random.choice(ages, p=pdf, size=size)
+
+    return draws
 
 # --------------------------------------------------------
 # HELPER: SHIFT eq->bonds
@@ -192,7 +301,8 @@ def scenarioA_montecarlo(p: Params):
     results = []
     result_pot = []
     outcount = 0
-    for _ in range(p.num_sims):
+    years_payout = sample_lifetime_from67(p.gender, p.num_sims)
+    for i in range(p.num_sims):
         pot, bs = scenarioA_accum(p)
         total_spend = 0.0
         ran_out = False
@@ -201,7 +311,7 @@ def scenarioA_montecarlo(p: Params):
         bd = 0.0
         bd_bs = 0.0
         spend_year = p.desired_spend
-        for t in range(p.years_payout):
+        for t in range(years_payout[i]):
             if t < p.glide_path_years:
                 fraction = 1.0 / p.glide_path_years
                 eq, eq_bs, bd, bd_bs = shift_equity_to_bonds(
@@ -257,7 +367,8 @@ def scenarioB_montecarlo(p: Params):
     results = []
     result_pot = []
     outc = 0
-    for _ in range(p.num_sims):
+    years_payout = sample_lifetime_from67(p.gender, p.num_sims)
+    for i in range(p.num_sims):
         eq = br
         eq_bs = br_bs
         bd = 0.0
@@ -267,7 +378,7 @@ def scenarioB_montecarlo(p: Params):
         ran_out = False
         spend_year = p.desired_spend
 
-        for t in range(p.years_payout):
+        for t in range(years_payout[i]):
             # SHIFT eq->bond
             if t < p.glide_path_years:
                 fraction = 1.0 / p.glide_path_years
@@ -335,7 +446,8 @@ def scenarioC_montecarlo(p: Params):
     results = []
     result_pot = []
     outc = 0
-    for _ in range(p.num_sims):
+    years_payout = sample_lifetime_from67(p.gender, p.num_sims)
+    for i in range(p.num_sims):
         eq = net_lump
         eq_bs = net_lump
         bd = 0.0
@@ -345,7 +457,7 @@ def scenarioC_montecarlo(p: Params):
         ran_out = False
         spend_year = p.desired_spend
 
-        for t in range(p.years_payout):
+        for t in range(years_payout[i]):
             # SHIFT
             if t < p.glide_path_years:
                 fraction = 1.0 / p.glide_path_years
@@ -412,8 +524,9 @@ def scenarioD_montecarlo(p: Params):
     results = []
     result_pot = []
     outcount = 0
-
-    for _ in range(p.num_sims):
+    
+    years_payout = sample_lifetime_from67(p.gender, p.num_sims)
+    for i in range(p.num_sims):
         eq = net_l3
         eq_bs = net_l3
         bd = 0.0
@@ -423,7 +536,7 @@ def scenarioD_montecarlo(p: Params):
         ran_out = False
         spend_year = p.desired_spend
 
-        for t in range(p.years_payout):
+        for t in range(years_payout[i]):
             # SHIFT eq->bond
             if t < p.glide_path_years:
                 fraction = 1.0 / p.glide_path_years
