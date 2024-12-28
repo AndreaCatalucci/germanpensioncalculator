@@ -458,7 +458,7 @@ def scenarioD_montecarlo(p: Params):
                 eq = 0
                 bd = 0
                 ran_out = True
-        result_pot.append(present_value(eq + bd, t, p.discount_rate))
+        result_pot.append(eq + bd)
         results.append(total_spend)
         if ran_out:
             outcount += 1
