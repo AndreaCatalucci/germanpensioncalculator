@@ -12,7 +12,7 @@ class Params:
 
     # Durations
     years_accum = age_retire - age_start  # e.g. 29
-    glide_path_years = 10  # number of years to shift from equity to bonds post-67
+    glide_path_years = 20  # number of years to shift from equity to bonds post-67
 
     # Annual contributions
     annual_contribution = 21000
@@ -307,7 +307,7 @@ def scenarioA_montecarlo(p: Params):
     results = []
     result_pot = []
     outcount = 0
-    years_payout = sample_lifetime_from67(p.gender, p.num_sims)
+    years_payout = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
     for i in range(p.num_sims):
         pot, bs = scenarioA_accum(p)
         total_spend = 0.0
@@ -375,7 +375,7 @@ def scenarioB_montecarlo(p: Params):
     results = []
     result_pot = []
     outc = 0
-    years_payout = sample_lifetime_from67(p.gender, p.num_sims)
+    years_payout = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
     for i in range(p.num_sims):
         eq = br
         eq_bs = br_bs
@@ -454,7 +454,7 @@ def scenarioC_montecarlo(p: Params):
     results = []
     result_pot = []
     outc = 0
-    years_payout = sample_lifetime_from67(p.gender, p.num_sims)
+    years_payout = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
     for i in range(p.num_sims):
         eq = net_lump
         eq_bs = net_lump
@@ -535,7 +535,7 @@ def scenarioD_montecarlo(p: Params):
     result_pot = []
     outcount = 0
 
-    years_payout = sample_lifetime_from67(p.gender, p.num_sims)
+    years_payout = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
     for i in range(p.num_sims):
         eq = net_l3
         eq_bs = net_l3
