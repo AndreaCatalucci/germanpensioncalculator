@@ -95,7 +95,8 @@ def solve_gross_for_net(eq, bd, eq_basis, bd_basis, net_needed, cg_tax):
         net_needed -= net_bd_withdrawal
         gross_bd_withdrawal = net_bd_withdrawal * (1 + cg_tax)
         bd_after = bd - gross_bd_withdrawal
-        bd_basis_after = bd_basis_after * (gross_bd_withdrawal / bd)
+        fraction = gross_bd_withdrawal / bd
+        bd_basis_after = (1 - fraction) * bd_basis
         net_withdrawal += net_bd_withdrawal
         gross_withdrawal += gross_bd_withdrawal
     if eq > 0:
@@ -104,7 +105,8 @@ def solve_gross_for_net(eq, bd, eq_basis, bd_basis, net_needed, cg_tax):
         net_needed -= net_eq_withdrawal
         gross_eq_withdrawal = net_eq_withdrawal * (1 + cg_tax)
         eq_after = eq - gross_eq_withdrawal
-        eq_basis_after = eq_basis_after * (gross_eq_withdrawal / eq)
+        fraction = gross_eq_withdrawal / eq
+        eq_basis_after = (1 - fraction) * eq_basis
         net_withdrawal += net_eq_withdrawal
         gross_withdrawal += gross_eq_withdrawal
     return (
@@ -359,9 +361,7 @@ def scenarioC_montecarlo(p: Params):
 
             # partial withdrawal
             gross, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = (
-                solve_gross_for_net(
-                    eq, bd, eq_bs, bd_bs, spend_year, p.cg_tax_normal
-                )
+                solve_gross_for_net(eq, bd, eq_bs, bd_bs, spend_year, p.cg_tax_normal)
             )
             spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
             eq = eq_after
@@ -371,12 +371,12 @@ def scenarioC_montecarlo(p: Params):
 
             total_spend += present_value(net_, t, p.discount_rate)
 
-            result_pot.append(eq + bd)
             if eq + bd <= 0:
                 eq = 0
                 bd = 0
                 ran_out = True
 
+        result_pot.append(eq + bd)
         results.append(total_spend)
         if ran_out:
             outc += 1
@@ -453,13 +453,12 @@ def scenarioD_montecarlo(p: Params):
 
             total_net = net_annu + net_
             total_spend += present_value(total_net, t, p.discount_rate)
-            result_pot.append(present_value(eq + bd, t, p.discount_rate))
 
             if eq + bd <= 0:
                 eq = 0
                 bd = 0
                 ran_out = True
-
+        result_pot.append(present_value(eq + bd, t, p.discount_rate))
         results.append(total_spend)
         if ran_out:
             outcount += 1
