@@ -8,7 +8,7 @@ class Params:
     # Ages
     age_start = 38
     age_retire = 67
-    gender = 'M'
+    gender = "M"
 
     # Durations
     years_accum = age_retire - age_start  # e.g. 29
@@ -42,6 +42,7 @@ class Params:
     inflation_mean = 0.02
     inflation_std = 0.01
     desired_spend = 48000.0 * ((1 + inflation_mean) ** years_accum)
+    public_pension = 24000
 
     # Number of Monte Carlo runs
     num_sims = 10000
@@ -64,93 +65,97 @@ def sample_lifetime_from67(gender="M", size=10000):
 
     # 2) Define approximate PMFs for M vs. F.
     #    In reality, you'd use real life-table data (destatis or insurers).
-    
+
     if gender == "M":
         # Typically a slightly earlier mortality distribution
-        pdf = np.array([
-            0.006,  # 67
-            0.006,  # 68
-            0.008,  # 69
-            0.010,  # 70
-            0.015,  # 71
-            0.020,  # 72
-            0.025,  # 73
-            0.030,  # 74
-            0.040,  # 75
-            0.050,  # 76
-            0.060,  # 77
-            0.065,  # 78
-            0.070,  # 79
-            0.080,  # 80
-            0.085,  # 81
-            0.090,  # 82
-            0.095,  # 83
-            0.095,  # 84
-            0.090,  # 85
-            0.080,  # 86
-            0.070,  # 87
-            0.060,  # 88
-            0.045,  # 89
-            0.035,  # 90
-            0.025,  # 91
-            0.020,  # 92
-            0.015,  # 93
-            0.010,  # 94
-            0.007,  # 95
-            0.005,  # 96
-            0.003,  # 97
-            0.003,  # 98
-            0.002,  # 99
-            0.001,  # 100
-            0.001,  # 101
-            0.001,  # 102
-            0.001,  # 103
-            0.001,  # 104
-            0.001,  # 105
-        ])
+        pdf = np.array(
+            [
+                0.006,  # 67
+                0.006,  # 68
+                0.008,  # 69
+                0.010,  # 70
+                0.015,  # 71
+                0.020,  # 72
+                0.025,  # 73
+                0.030,  # 74
+                0.040,  # 75
+                0.050,  # 76
+                0.060,  # 77
+                0.065,  # 78
+                0.070,  # 79
+                0.080,  # 80
+                0.085,  # 81
+                0.090,  # 82
+                0.095,  # 83
+                0.095,  # 84
+                0.090,  # 85
+                0.080,  # 86
+                0.070,  # 87
+                0.060,  # 88
+                0.045,  # 89
+                0.035,  # 90
+                0.025,  # 91
+                0.020,  # 92
+                0.015,  # 93
+                0.010,  # 94
+                0.007,  # 95
+                0.005,  # 96
+                0.003,  # 97
+                0.003,  # 98
+                0.002,  # 99
+                0.001,  # 100
+                0.001,  # 101
+                0.001,  # 102
+                0.001,  # 103
+                0.001,  # 104
+                0.001,  # 105
+            ]
+        )
     else:
         # 'F' typically lives slightly longer, so shift probabilities a bit
-        pdf = np.array([
-            0.005,  # 67
-            0.005,  # 68
-            0.006,  # 69
-            0.008,  # 70
-            0.012,  # 71
-            0.015,  # 72
-            0.020,  # 73
-            0.025,  # 74
-            0.030,  # 75
-            0.040,  # 76
-            0.050,  # 77
-            0.055,  # 78
-            0.060,  # 79
-            0.070,  # 80
-            0.075,  # 81
-            0.080,  # 82
-            0.085,  # 83
-            0.090,  # 84
-            0.090,  # 85
-            0.080,  # 86
-            0.070,  # 87
-            0.060,  # 88
-            0.050,  # 89
-            0.040,  # 90
-            0.030,  # 91
-            0.025,  # 92
-            0.020,  # 93
-            0.015,  # 94
-            0.010,  # 95
-            0.007,  # 96
-            0.005,  # 97
-            0.003,  # 98
-            0.002,  # 99
-            0.002,  # 100
-            0.001,  # 101
-            0.001,  # 102
-            0.001,  # 103
-            0.001,  # 104
-            0.001,  # 105
-        ])
+        pdf = np.array(
+            [
+                0.005,  # 67
+                0.005,  # 68
+                0.006,  # 69
+                0.008,  # 70
+                0.012,  # 71
+                0.015,  # 72
+                0.020,  # 73
+                0.025,  # 74
+                0.030,  # 75
+                0.040,  # 76
+                0.050,  # 77
+                0.055,  # 78
+                0.060,  # 79
+                0.070,  # 80
+                0.075,  # 81
+                0.080,  # 82
+                0.085,  # 83
+                0.090,  # 84
+                0.090,  # 85
+                0.080,  # 86
+                0.070,  # 87
+                0.060,  # 88
+                0.050,  # 89
+                0.040,  # 90
+                0.030,  # 91
+                0.025,  # 92
+                0.020,  # 93
+                0.015,  # 94
+                0.010,  # 95
+                0.007,  # 96
+                0.005,  # 97
+                0.003,  # 98
+                0.002,  # 99
+                0.002,  # 100
+                0.001,  # 101
+                0.001,  # 102
+                0.001,  # 103
+                0.001,  # 104
+                0.001,  # 105
+            ]
+        )
 
     # Normalize so probabilities sum to 1
     pdf /= pdf.sum()
@@ -159,6 +164,7 @@ def sample_lifetime_from67(gender="M", size=10000):
     draws = np.random.choice(ages, p=pdf, size=size)
 
     return draws
+
 
 # --------------------------------------------------------
 # HELPER: SHIFT eq->bonds
@@ -324,7 +330,9 @@ def scenarioA_montecarlo(p: Params):
 
             # partial withdrawal
             gross, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = (
-                solve_gross_for_net(eq, bd, eq_bs, bd_bs, spend_year, p.cg_tax_normal)
+                solve_gross_for_net(
+                    eq, bd, eq_bs, bd_bs, spend_year - p.public_pension, p.cg_tax_normal
+                )
             )
             spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
 
@@ -392,7 +400,7 @@ def scenarioB_montecarlo(p: Params):
             eq *= 1 + eq_r
             bd *= 1 + bd_r
 
-            needed = spend_year - net_ann
+            needed = spend_year - net_ann - p.public_pension
             if needed < 0:
                 needed = 0
             # partial withdrawal
@@ -473,7 +481,9 @@ def scenarioC_montecarlo(p: Params):
 
             # partial withdrawal
             gross, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = (
-                solve_gross_for_net(eq, bd, eq_bs, bd_bs, spend_year, p.cg_tax_normal)
+                solve_gross_for_net(
+                    eq, bd, eq_bs, bd_bs, spend_year - p.public_pension, p.cg_tax_normal
+                )
             )
             spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
             eq = eq_after
@@ -524,7 +534,7 @@ def scenarioD_montecarlo(p: Params):
     results = []
     result_pot = []
     outcount = 0
-    
+
     years_payout = sample_lifetime_from67(p.gender, p.num_sims)
     for i in range(p.num_sims):
         eq = net_l3
@@ -550,7 +560,7 @@ def scenarioD_montecarlo(p: Params):
             eq *= 1 + eq_r
             bd *= 1 + bd_r
 
-            needed = spend_year - net_annu
+            needed = spend_year - net_annu - p.public_pension
             if needed < 0:
                 needed = 0
 
