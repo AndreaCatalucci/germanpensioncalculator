@@ -6,16 +6,16 @@ import numpy as np
 # --------------------------------------------------------
 class Params:
     # Ages
-    age_start = 38
+    age_start = 33
     age_retire = 67
-    gender = "M"
+    gender = "F"
 
     # Durations
     years_accum = age_retire - age_start  # e.g. 29
-    glide_path_years = 20  # number of years to shift from equity to bonds post-67
+    glide_path_years = 10  # number of years to shift from equity to bonds post-67
 
     # Annual contributions
-    annual_contribution = 21000
+    annual_contribution = 12000
 
     pension_fee = 0.003
     fund_fee = 0.002
@@ -45,7 +45,7 @@ class Params:
     public_pension = 24000
 
     # Number of Monte Carlo runs
-    num_sims = 10000
+    num_sims = 100000
 
     # Discount rate for net present value
     discount_rate = 0.01
@@ -53,116 +53,104 @@ class Params:
 
 def sample_lifetime_from67(gender="M", size=10000):
     """
-    Returns an array of 'size' random ages of death, where death occurs
-    at or after age 67. The distribution depends on 'gender':
-      - 'M' = male
-      - 'F' = female
-    We assume a discrete distribution from 67 to 105.
+    Returns an array of 'size' random ages of death, at or after age 67,
+    with a distribution that is more optimistic for 2060 Germany.
     """
 
-    # 1) Define the range of ages (67..105).
+    # Ages from 67..105
     ages = np.arange(67, 106)
 
-    # 2) Define approximate PMFs for M vs. F.
-    #    In reality, you'd use real life-table data (destatis or insurers).
-
     if gender == "M":
-        # Typically a slightly earlier mortality distribution
         pdf = np.array(
             [
-                0.006,  # 67
-                0.006,  # 68
-                0.008,  # 69
-                0.010,  # 70
-                0.015,  # 71
-                0.020,  # 72
-                0.025,  # 73
-                0.030,  # 74
-                0.040,  # 75
-                0.050,  # 76
-                0.060,  # 77
-                0.065,  # 78
-                0.070,  # 79
-                0.080,  # 80
-                0.085,  # 81
-                0.090,  # 82
-                0.095,  # 83
-                0.095,  # 84
-                0.090,  # 85
-                0.080,  # 86
-                0.070,  # 87
-                0.060,  # 88
-                0.045,  # 89
-                0.035,  # 90
-                0.025,  # 91
-                0.020,  # 92
-                0.015,  # 93
-                0.010,  # 94
-                0.007,  # 95
-                0.005,  # 96
-                0.003,  # 97
-                0.003,  # 98
-                0.002,  # 99
-                0.001,  # 100
-                0.001,  # 101
-                0.001,  # 102
-                0.001,  # 103
-                0.001,  # 104
-                0.001,  # 105
+                0.004,
+                0.004,
+                0.005,
+                0.006,
+                0.008,
+                0.010,
+                0.015,
+                0.020,
+                0.025,
+                0.035,
+                0.045,
+                0.050,
+                0.055,
+                0.065,
+                0.070,
+                0.080,
+                0.085,
+                0.090,
+                0.090,
+                0.085,
+                0.075,
+                0.065,
+                0.050,
+                0.040,
+                0.030,
+                0.025,
+                0.020,
+                0.015,
+                0.010,
+                0.008,
+                0.006,
+                0.004,
+                0.003,
+                0.003,
+                0.002,
+                0.002,
+                0.002,
+                0.001,
+                0.001,
             ]
         )
-    else:
-        # 'F' typically lives slightly longer, so shift probabilities a bit
+    else:  # "F"
         pdf = np.array(
             [
-                0.005,  # 67
-                0.005,  # 68
-                0.006,  # 69
-                0.008,  # 70
-                0.012,  # 71
-                0.015,  # 72
-                0.020,  # 73
-                0.025,  # 74
-                0.030,  # 75
-                0.040,  # 76
-                0.050,  # 77
-                0.055,  # 78
-                0.060,  # 79
-                0.070,  # 80
-                0.075,  # 81
-                0.080,  # 82
-                0.085,  # 83
-                0.090,  # 84
-                0.090,  # 85
-                0.080,  # 86
-                0.070,  # 87
-                0.060,  # 88
-                0.050,  # 89
-                0.040,  # 90
-                0.030,  # 91
-                0.025,  # 92
-                0.020,  # 93
-                0.015,  # 94
-                0.010,  # 95
-                0.007,  # 96
-                0.005,  # 97
-                0.003,  # 98
-                0.002,  # 99
-                0.002,  # 100
-                0.001,  # 101
-                0.001,  # 102
-                0.001,  # 103
-                0.001,  # 104
-                0.001,  # 105
+                0.003,
+                0.003,
+                0.004,
+                0.006,
+                0.007,
+                0.010,
+                0.014,
+                0.018,
+                0.024,
+                0.032,
+                0.040,
+                0.045,
+                0.050,
+                0.060,
+                0.065,
+                0.075,
+                0.080,
+                0.085,
+                0.090,
+                0.085,
+                0.075,
+                0.065,
+                0.055,
+                0.045,
+                0.035,
+                0.028,
+                0.022,
+                0.016,
+                0.012,
+                0.009,
+                0.006,
+                0.004,
+                0.003,
+                0.003,
+                0.002,
+                0.002,
+                0.002,
+                0.001,
+                0.001,
             ]
         )
 
-    # Normalize so probabilities sum to 1
-    pdf /= pdf.sum()
-
-    # 3) Sample from the discrete distribution using np.random.choice
+    pdf = pdf / pdf.sum()
     draws = np.random.choice(ages, p=pdf, size=size)
-
     return draws
 
 
@@ -597,6 +585,46 @@ def scenarioD_montecarlo(p: Params):
 
 
 # --------------------------------------------------------
+# SCENARIO E: L3 as annuity => annuity taxed at 17%
+# --------------------------------------------------------
+def scenarioE_montecarlo(p: Params):
+    pot, bs = scenarioC_accum(p)
+    gross_ann = pot * p.ruerup_ann_rate
+    net_ann = gross_ann * (1 - p.ruerup_tax * 0.17 - p.ruerup_dist_fee)
+    print(net_ann)
+
+    # That net => eq pot
+    # Then partial decum each year => net needed= p.desired_spend - net_annu
+    results = []
+    result_pot = []
+    outcount = 0
+    years_payout = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
+
+    for i in range(p.num_sims):
+        total_spend = 0.0
+        spend_year = p.desired_spend
+
+        for t in range(years_payout[i]):
+            if spend_year > net_ann + p.public_pension:
+                outcount += 1
+                break
+            spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
+            total_spend += present_value(net_ann, t, p.discount_rate)
+
+        results.append(total_spend)
+        result_pot.append(0)
+
+    arr = np.array(results)
+    return {
+        "prob_runout": outcount / p.num_sims,
+        "p10": np.percentile(arr, 10),
+        "p50": np.percentile(arr, 50),
+        "p90": np.percentile(arr, 90),
+        "p50pot": np.percentile(result_pot, 50),
+    }
+
+
+# --------------------------------------------------------
 # MAIN
 # --------------------------------------------------------
 if __name__ == "__main__":
@@ -606,6 +634,7 @@ if __name__ == "__main__":
     resB = scenarioB_montecarlo(p)
     resC = scenarioC_montecarlo(p)
     resD = scenarioD_montecarlo(p)
+    resE = scenarioE_montecarlo(p)
 
     print("\nScenario A (Broker Only, eq->bond decum):")
     print(f"Run-out prob: {resA['prob_runout']*100:.1f}%")
@@ -629,4 +658,10 @@ if __name__ == "__main__":
     print(f"Run-out prob: {resD['prob_runout']*100:.1f}%")
     print(
         f"10%: {resD['p10']:,.0f}, median: {resD['p50']:,.0f}, 90%: {resD['p90']:,.0f}, pot: {resD['p50pot']}"
+    )
+
+    print("\nScenario E (L3 annuity):")
+    print(f"Run-out prob: {resE['prob_runout']*100:.1f}%")
+    print(
+        f"10%: {resE['p10']:,.0f}, median: {resE['p50']:,.0f}, 90%: {resE['p90']:,.0f}, pot: {resE['p50pot']}"
     )
