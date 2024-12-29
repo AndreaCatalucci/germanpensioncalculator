@@ -41,8 +41,7 @@ class Params:
     # Desired net annual spending
     inflation_mean = 0.02
     inflation_std = 0.01
-    desired_spend = 48000.0 * ((1 + inflation_mean) ** years_accum)
-    public_pension = 24000
+    desired_spend = 24000.0 * ((1 + inflation_mean) ** years_accum)
 
     # Number of Monte Carlo runs
     num_sims = 100000
@@ -318,9 +317,7 @@ def scenarioA_montecarlo(p: Params):
 
             # partial withdrawal
             gross, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = (
-                solve_gross_for_net(
-                    eq, bd, eq_bs, bd_bs, spend_year - p.public_pension, p.cg_tax_normal
-                )
+                solve_gross_for_net(eq, bd, eq_bs, bd_bs, spend_year, p.cg_tax_normal)
             )
             spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
 
@@ -388,7 +385,7 @@ def scenarioB_montecarlo(p: Params):
             eq *= 1 + eq_r
             bd *= 1 + bd_r
 
-            needed = spend_year - net_ann - p.public_pension
+            needed = spend_year - net_ann
             if needed < 0:
                 needed = 0
             # partial withdrawal
@@ -469,9 +466,7 @@ def scenarioC_montecarlo(p: Params):
 
             # partial withdrawal
             gross, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = (
-                solve_gross_for_net(
-                    eq, bd, eq_bs, bd_bs, spend_year - p.public_pension, p.cg_tax_normal
-                )
+                solve_gross_for_net(eq, bd, eq_bs, bd_bs, spend_year, p.cg_tax_normal)
             )
             spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
             eq = eq_after
@@ -548,7 +543,7 @@ def scenarioD_montecarlo(p: Params):
             eq *= 1 + eq_r
             bd *= 1 + bd_r
 
-            needed = spend_year - net_annu - p.public_pension
+            needed = spend_year - net_annu
             if needed < 0:
                 needed = 0
 
@@ -605,7 +600,7 @@ def scenarioE_montecarlo(p: Params):
         spend_year = p.desired_spend
 
         for t in range(years_payout[i]):
-            if spend_year > net_ann + p.public_pension:
+            if spend_year > net_ann:
                 outcount += 1
                 break
             spend_year *= 1 + np.random.normal(p.inflation_mean, p.inflation_std)
