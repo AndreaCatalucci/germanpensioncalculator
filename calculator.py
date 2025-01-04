@@ -938,6 +938,6 @@ if __name__ == "__main__":
             (resF, "50% L3 50% Broker"),
         ],
         key=lambda t: t[0]["p50"],
-        reversed=True,
+        reverse=True,
     )
     plot_boxplot([e[0] for e in sorted_res], labels=[e[1] for e in sorted_res])
