@@ -435,7 +435,7 @@ class ScenarioC(Scenario):
         bs = pot_dict["l3_bs"]
         gains = max(0, pot - bs)
         tax_ = gains * p.cg_tax_half
-        net_lump = max(0, pot - tax_)
+        net_lump = max(0, pot - tax_ - pot * p.ruerup_dist_fee)
 
         # that lumpsum => eq pot
         new_dict = {
