@@ -928,4 +928,16 @@ if __name__ == "__main__":
 
     # Example Plots
     # Compare a few scenarios in a box plot:
-    plot_boxplot([resA, resF], labels=["A", "F"])
+    sorted_res = sorted(
+        [
+            (resA, "Broker Only"),
+            (resB, "Rürup + Broker"),
+            (resC, "L3 Lump Sum"),
+            (resD, "Rürup + L3 Lump Sum"),
+            (resE, "L3 Annutiy"),
+            (resF, "50% L3 50% Broker"),
+        ],
+        key=lambda t: t[0]["p50"],
+        reversed=True,
+    )
+    plot_boxplot([e[0] for e in sorted_res], labels=[e[1] for e in sorted_res])
