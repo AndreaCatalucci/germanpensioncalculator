@@ -112,9 +112,10 @@ class Scenario:
         if current_year == self.params.years_transition - 1:
             # 2) Convert L3 => lumpsum half CG => eq
             if pot.l3_eq > 0:
-                gains = max(0, pot.l3_eq - pot.l3_eq_bs - self.params.ruerup_dist_fee)
-                tax_ = gains * self.params.cg_tax_half
-                net_l3 = max(0, pot.l3_eq - tax_ - self.params.ruerup_dist_fee)
+                fees = pot.l3_eq * self.params.ruerup_dist_fee
+                gains = max(0, pot.l3_eq - pot.l3_eq_bs - fees)
+                tax = gains * self.params.cg_tax_half
+                net_l3 = max(0, pot.l3_eq - tax - fees)
                 pot.br_eq += net_l3
                 pot.br_eq_bs += net_l3
                 pot.l3_eq = 0
@@ -450,7 +451,7 @@ def simulate_montecarlo(scenario: Scenario):
             net_ann = gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
             sim_pot.rurup = 0
 
-        print("netann", net_ann)
+        # print("netann", net_ann)
 
         for t in range(T):
             eq_r = np.random.normal(p.equity_mean, p.equity_std)
