@@ -118,7 +118,17 @@ def shift_equity_to_bonds(eq, eq_bs, bd, bd_bs, fraction, cgt):
     return eq_after, eq_bs_after, bd_after, bd_bs_after
 
 
-def solve_gross_for_net(eq, eq_bs, bd, bd_bs, net_needed, cg_tax):
+@dataclass
+class Withdrawal:
+    gross_withdrawn: float
+    net_withdrawn: float
+    eq_after: float
+    eq_bs_after: float
+    bd_after: float
+    bd_bs_after: float
+
+
+def solve_gross_for_net(eq, eq_bs, bd, bd_bs, net_needed, cg_tax) -> Withdrawal:
     total_pot = eq + bd
     if total_pot <= 0:
         return (0, 0, 0, 0, 0, 0)
@@ -157,7 +167,7 @@ def solve_gross_for_net(eq, eq_bs, bd, bd_bs, net_needed, cg_tax):
             gross_withdrawn += gross_eq_withdrawal
             still_needed -= portion2
 
-    return (
+    return Withdrawal(
         gross_withdrawn,
         net_withdrawn,
         eq_after,
@@ -316,10 +326,10 @@ class ScenarioA(Scenario):
 
         eq_r = rand_returns["eq"]
         bd_r = rand_returns["bd"]
-        pot.br_eq *= 1 + eq_r
-        pot.br_bd *= 1 + bd_r
+        pot.br_eq *= 1 + eq_r - p.fund_fee
+        pot.br_bd *= 1 + bd_r - p.fund_fee
 
-        _, net_, eq_after, eq_bs_after, bd_after, bd_bs_after = solve_gross_for_net(
+        withdrawn = solve_gross_for_net(
             pot.br_eq,
             pot.br_eq_bs,
             pot.br_bd,
@@ -328,9 +338,9 @@ class ScenarioA(Scenario):
             p.cg_tax_normal,
         )
 
-        pot.br_eq, pot.br_bd = eq_after, bd_after
-        pot.br_eq_bs, pot.br_bd_bs = eq_bs_after, bd_bs_after
-        return net_, pot
+        pot.br_eq, pot.br_bd = withdrawn.eq_after, withdrawn.bd_after
+        pot.br_eq_bs, pot.br_bd_bs = withdrawn.eq_bs_after, withdrawn.bd_bs_after
+        return withdrawn.net_withdrawn, pot
 
 
 class ScenarioB(Scenario):
@@ -386,15 +396,15 @@ class ScenarioB(Scenario):
         bd *= 1 + rand_returns["bd"]
 
         needed_broker = max(0, needed_net - net_ann)
-        _, net_wd, eq_after, eq_bs_after, bd_after, bd_bs_after = solve_gross_for_net(
+        withdrawn = solve_gross_for_net(
             eq, eq_bs, bd, bd_bs, needed_broker, p.cg_tax_normal
         )
-        total_net = net_ann + net_wd
+        total_net = net_ann + withdrawn.net_withdrawn
 
-        pot.br_eq = eq_after
-        pot.br_bd = bd_after
-        pot.br_eq_bs = eq_bs_after
-        pot.br_bd_bs = bd_bs_after
+        pot.br_eq = withdrawn.eq_after
+        pot.br_bd = withdrawn.bd_after
+        pot.br_eq_bs = withdrawn.eq_bs_after
+        pot.br_bd_bs = withdrawn.bd_bs_after
         return total_net, pot
 
 
@@ -432,7 +442,7 @@ class ScenarioC(Scenario):
         pot.br_eq *= 1 + rand_returns["eq"]
         pot.br_bd *= 1 + rand_returns["bd"]
 
-        _, net_, eq_after, eq_bs_after, bd_after, bd_bs_after = solve_gross_for_net(
+        withdrawn = solve_gross_for_net(
             pot.br_eq,
             pot.br_eq_bs,
             pot.br_bd,
@@ -440,9 +450,9 @@ class ScenarioC(Scenario):
             needed_net,
             p.cg_tax_normal,
         )
-        pot.br_eq, pot.br_bd = eq_after, bd_after
-        pot.br_eq_bs, pot.br_bd_bs = eq_bs_after, bd_bs_after
-        return net_, pot
+        pot.br_eq, pot.br_bd = withdrawn.eq_after, withdrawn.bd_after
+        pot.br_eq_bs, pot.br_bd_bs = withdrawn.eq_bs_after, withdrawn.bd_bs_after
+        return withdrawn.net_withdrawn, pot
 
 
 class ScenarioD(Scenario):
@@ -487,13 +497,13 @@ class ScenarioD(Scenario):
         pot.br_bd *= 1 + rand_returns["bd"]
 
         needed = max(0, needed_net - net_ann)
-        _, net_wd, eq_after, eq_bs_after, bd_after, bd_bs_after = solve_gross_for_net(
+        withdrawn = solve_gross_for_net(
             pot.br_eq, pot.br_eq_bs, pot.br_bd, pot.br_bd_bs, needed, p.cg_tax_normal
         )
-        total_net = net_ann + net_wd
+        total_net = net_ann + withdrawn.net_withdrawn
 
-        pot.br_eq, pot.br_bd = eq_after, bd_after
-        pot.br_eq_bs, pot.br_bd_bs = eq_bs_after, bd_bs_after
+        pot.br_eq, pot.br_bd = withdrawn.eq_after, withdrawn.bd_after
+        pot.br_eq_bs, pot.br_bd_bs = withdrawn.eq_bs_after, withdrawn.bd_bs_after
         return total_net, pot
 
 
@@ -559,7 +569,7 @@ class ScenarioE(Scenario):
         pot.br_bd *= 1 + rand_returns["bd"]
 
         # partial withdrawal
-        _, net_, eq_after, eq_bs_after, bd_after, bd_bs_after = solve_gross_for_net(
+        withdrawn = solve_gross_for_net(
             pot.br_eq,
             pot.br_eq_bs,
             pot.br_bd,
@@ -567,9 +577,9 @@ class ScenarioE(Scenario):
             needed_net,
             p.cg_tax_normal,
         )
-        pot.br_eq, pot.br_bd = eq_after, bd_after
-        pot.br_eq_bs, pot.br_bd_bs = eq_bs_after, bd_bs_after
-        return net_, pot
+        pot.br_eq, pot.br_bd = withdrawn.eq_after, withdrawn.bd_after
+        pot.br_eq_bs, pot.br_bd_bs = withdrawn.eq_bs_after, withdrawn.bd_bs_after
+        return withdrawn.net_withdrawn, pot
 
 
 # --------------------------------------------------------
