@@ -134,7 +134,7 @@ def present_value(cf, year, discount_rate):
 def withdraw(pot: Pot, net_needed, cg_tax) -> Withdrawal:
     total_pot = pot.br_bd + pot.br_eq + pot.l3_eq
     if total_pot <= 0:
-        return (0, 0, 0, 0, 0, 0)
+        return Withdrawal(0.0, 0.0)
 
     net_withdrawn = 0
     gross_withdrawn = 0
@@ -205,32 +205,16 @@ class Scenario:
 def accumulate_initial_pots(p: Params) -> Pot:
     """Grow the user's initial pots from age_start..age_retire."""
     pot = Pot()
-
-    # We'll store the final amounts in pot's 'br_eq' for Broker
-    # 'eq' for Rürup principal, 'l3_eq' for L3, then unify later
-    # or do the approach below:
-    # For clarity, let's store them as we see them:
-    r = p.initial_rurup
-    br = p.initial_broker
-    br_bs = p.initial_broker_bs
-    l3 = p.initial_l3
-    l3_bs = p.initial_l3_bs
-
     for _ in range(p.years_accum):
-        r *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
-        br *= 1 + p.equity_mean - p.fund_fee
-        l3 *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
-
-    pot.rurup = r  # We'll treat eq as the final Rürup principal
-    pot.br_eq = br
-    pot.br_eq_bs = br_bs
-    pot.l3_eq = l3
-    pot.l3_eq_bs = l3_bs
-
+        pot.rurup *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
+        pot.br_eq *= 1 + p.equity_mean - p.fund_fee
+        pot.l3_eq *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
+    pot.br_eq = p.initial_broker_bs
+    pot.l3_eq_bs = p.initial_l3_bs
     return pot
 
 
-def prepare_decum(pot_scenario: Pot, p: Params, init_pot: Pot) -> Pot:
+def prepare_decum(init_pot: Pot, scenario_pot: Pot, params: Params) -> Pot:
     """
     Unify init_pot into pot_scenario so that at retirement
     we have exactly eq, eq_bs, bd, bd_bs (plus net_ann if any).
@@ -239,29 +223,31 @@ def prepare_decum(pot_scenario: Pot, p: Params, init_pot: Pot) -> Pot:
     final = Pot()
 
     # 1) Convert Rürup => net annuity
-    final.rurup += pot_scenario.rurup
+    final.rurup += scenario_pot.rurup
     final.rurup += init_pot.rurup
     if final.rurup > 0:
-        gross_ann = final.rurup * p.ruerup_ann_rate
-        net_ann_init = gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
-        final.net_ann += pot_scenario.net_ann + net_ann_init
+        gross_ann = final.rurup * params.ruerup_ann_rate
+        net_ann_init = gross_ann * (1 - params.ruerup_tax - params.ruerup_dist_fee)
+        final.net_ann += scenario_pot.net_ann + net_ann_init
         final.rurup = 0
 
     # 2) Convert L3 => lumpsum half CG => eq
-    final.l3_eq += pot_scenario.l3_eq
+    final.l3_eq += scenario_pot.l3_eq
     final.l3_eq += init_pot.l3_eq
     if final.l3_eq > 0:
         gains = max(0, final.l3_eq - final.l3_eq_bs)
-        tax_ = gains * p.cg_tax_half
+        tax_ = gains * params.cg_tax_half
         net_l3 = max(0, final.l3_eq - tax_)
         final.br_eq += net_l3
         final.br_eq_bs += net_l3
         final.l3_eq = 0
         final.l3_eq_bs = 0
 
-    final.net_ann += pot_scenario.net_ann
-    final.br_eq_bs += pot_scenario.br_eq_bs
-    final.br_bd += pot_scenario.br_bd
+    final.net_ann += scenario_pot.net_ann
+    final.br_eq += scenario_pot.br_eq
+    final.br_eq_bs += scenario_pot.br_eq_bs
+    final.br_bd += scenario_pot.br_bd
+    final.br_bd_bs += scenario_pot.br_bd_bs
 
     return final
 
@@ -518,8 +504,9 @@ class ScenarioE(Scenario):
 def simulate_montecarlo(scenario: Scenario, p: Params):
     init_pot = accumulate_initial_pots(p)
     scen_pot = scenario.accumulate(p)
-    final_pot = prepare_decum(scen_pot, p, init_pot)
-
+    print("scnepot", scen_pot.br_eq)
+    final_pot = prepare_decum(init_pot, scen_pot, p)
+    print("finalpot", final_pot.br_eq)
     lifetimes = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
     results = []
     leftover_pots = []
