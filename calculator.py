@@ -102,23 +102,24 @@ class Scenario:
     ) -> tuple[float, Pot]:
         raise NotImplementedError
 
-    def prepare_decum(self, pot: Pot, year: int, eq_r: float, bd_r: float) -> Pot:
+    def prepare_decum(
+        self, pot: Pot, current_year: int, eq_r: float, bd_r: float
+    ) -> Pot:
         """
         Unify init_pot into pot_scenario so that at retirement
         we have exactly eq, eq_bs, bd, bd_bs (plus net_ann if any).
         This avoids leftover sub-pots that never decumulate.
         """
-        if year == self.params.years_transition - 1:
-            pot.rurup *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
-            pot.br_eq *= 1 + eq_r - self.params.fund_fee
-            pot.l3_eq *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
-            pot.br_bd *= 1 + bd_r - self.params.fund_fee
-
+        pot.rurup *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
+        pot.br_eq *= 1 + eq_r - self.params.fund_fee
+        pot.l3_eq *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
+        pot.br_bd *= 1 + bd_r - self.params.fund_fee
+        if current_year == self.params.years_transition - 1:
             # 2) Convert L3 => lumpsum half CG => eq
             if pot.l3_eq > 0:
-                gains = max(0, pot.l3_eq - pot.l3_eq_bs)
+                gains = max(0, pot.l3_eq - pot.l3_eq_bs - self.params.ruerup_dist_fee)
                 tax_ = gains * self.params.cg_tax_half
-                net_l3 = max(0, pot.l3_eq - tax_)
+                net_l3 = max(0, pot.l3_eq - tax_ - self.params.ruerup_dist_fee)
                 pot.br_eq += net_l3
                 pot.br_eq_bs += net_l3
                 pot.l3_eq = 0
