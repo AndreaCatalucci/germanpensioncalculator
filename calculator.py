@@ -109,17 +109,17 @@ class Scenario:
         pot.br_eq *= 1 + eq_r - self.params.fund_fee
         pot.l3_eq *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
         pot.br_bd *= 1 + bd_r - self.params.fund_fee
-        if current_year == self.params.years_transition - 1:
-            # 2) Convert L3 => lumpsum half CG => eq
-            if pot.l3_eq > 0:
-                fees = pot.l3_eq * self.params.ruerup_dist_fee
-                gains = max(0, pot.l3_eq - pot.l3_eq_bs - fees)
-                tax = gains * self.params.cg_tax_half
-                net_l3 = max(0, pot.l3_eq - tax - fees)
-                pot.br_eq += net_l3
-                pot.br_eq_bs += net_l3
-                pot.l3_eq = 0
-                pot.l3_eq_bs = 0
+        if pot.l3_eq > 0:
+            fraction = 1. / self.params.years_transition
+            moved = fraction * pot.l3_eq
+            fees = moved * self.params.ruerup_dist_fee
+            gains = max(0, moved - pot.l3_eq_bs * fraction - fees)
+            tax = gains * self.params.cg_tax_half
+            net_l3 = max(0, moved - tax - fees)
+            pot.br_bd += net_l3
+            pot.br_bd_bs += net_l3
+            pot.l3_eq -= moved
+            pot.l3_eq_bs -= pot.l3_eq_bs * fraction
 
 
 # --------------------------------------------------------
@@ -360,7 +360,7 @@ class ScenarioL3Broker(Scenario):
         br_eq, br_bd = 0.0, 0.0
         br_eq_bs, br_bd_bs = 0.0, 0.0
         c = self.params.annual_contribution
-        half = 0.5
+        proportion_l3 = 0.4
 
         for _ in range(self.params.years_accum):
             l3_eq *= (
@@ -372,8 +372,8 @@ class ScenarioL3Broker(Scenario):
             br_eq *= 1 + self.params.equity_mean - self.params.fund_fee
             br_bd *= 1 + self.params.bond_mean - self.params.fund_fee
 
-            c_l3 = c * half
-            c_br = c * (1 - half)
+            c_l3 = c * proportion_l3
+            c_br = c * (1 - proportion_l3)
             l3_eq += c_l3
             l3_eq_bs += c_l3
             br_eq += c_br
@@ -394,9 +394,8 @@ class ScenarioL3Broker(Scenario):
         needed_net: float,
         rand_returns: dict,
     ) -> tuple[float, Pot]:
-        # SHIFT eq->bd at ages 72..(72+p.glide_path_years)
         age_now = self.params.age_retire + current_year
-        if age_now >= 72 and (age_now - 72) < self.params.glide_path_years:
+        if age_now >= 70 and (age_now - 70) < self.params.glide_path_years:
             frac = 1.0 / self.params.glide_path_years
             shift_equity_to_bonds(pot, frac, self.params.cg_tax_normal)
 
@@ -445,13 +444,11 @@ def simulate_montecarlo(scenario: Scenario):
             bd_r = np.random.normal(p.bond_mean, p.bond_std)
             scenario.transition_year(sim_pot, year, eq_r, bd_r)
 
-        net_ann = 0
+        net_ann = scenario.params.public_pension
         if sim_pot.rurup > 0:
             gross_ann = sim_pot.rurup * p.ruerup_ann_rate
-            net_ann = gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
+            net_ann += gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
             sim_pot.rurup = 0
-
-        # print("netann", net_ann)
 
         for t in range(T):
             eq_r = np.random.normal(p.equity_mean, p.equity_std)
