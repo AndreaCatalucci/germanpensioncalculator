@@ -1,4 +1,4 @@
-# README
+# German Pension Calculator
 
 ## 1. Purpose
 This script simulates various **retirement scenarios** for Germany, involving a **Level 3 (L3) pension**, a **Broker** account or a **Rurüp**. It models:
