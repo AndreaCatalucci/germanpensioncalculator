@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, replace
 from params import Params
-from dataclasses import dataclass
 
 
 @dataclass
@@ -21,7 +20,7 @@ class Pot:
     net_ann: float = 0.0
 
     def leftover(self):
-        return self.br_eq + self.br_bd + self.l3_eq + self.rurup + self.net_ann
+        return self.br_eq + self.br_bd + self.l3_eq + self.rurup
 
 
 @dataclass
@@ -160,7 +159,7 @@ def withdraw(pot: Pot, net_needed, cg_tax) -> Withdrawal:
         if portion2 > 0:
             frac2 = portion2 / net_eq
             gross_eq_withdrawal = frac2 * pot.br_eq
-            pot.br_bd_bs = pot.br_eq_bs * (1 - frac2)
+            pot.br_eq_bs = pot.br_eq_bs * (1 - frac2)
             pot.br_eq -= gross_eq_withdrawal
             net_withdrawn += portion2
             gross_withdrawn += gross_eq_withdrawal
@@ -204,13 +203,17 @@ class Scenario:
 # --------------------------------------------------------
 def accumulate_initial_pots(p: Params) -> Pot:
     """Grow the user's initial pots from age_start..age_retire."""
-    pot = Pot()
+    pot = Pot(
+        rurup=p.initial_rurup,
+        br_eq=p.initial_broker,
+        br_eq_bs=p.initial_broker_bs,
+        l3_eq=p.initial_l3,
+        l3_eq_bs=p.initial_l3_bs,
+    )
     for _ in range(p.years_accum):
         pot.rurup *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
         pot.br_eq *= 1 + p.equity_mean - p.fund_fee
         pot.l3_eq *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
-    pot.br_eq = p.initial_broker_bs
-    pot.l3_eq_bs = p.initial_l3_bs
     return pot
 
 
@@ -337,10 +340,6 @@ class ScenarioRurupBroker(Scenario):
         rand_returns: dict,
     ) -> tuple[float, Pot]:
         net_ann = pot.net_ann
-        eq = pot.br_eq
-        bd = pot.br_bd
-        eq_bs = pot.br_eq_bs
-        bd_bs = pot.br_bd_bs
 
         if current_year < p.glide_path_years:
             frac = 1.0 / p.glide_path_years
@@ -445,8 +444,8 @@ class ScenarioL3Broker(Scenario):
 
     def accumulate(self, p: Params) -> Pot:
         pot = Pot()
-        l3_eq, l3_bd = 0.0, 0.0
-        l3_eq_bs, l3_bd_bs = 0.0, 0.0
+        l3_eq = 0.0
+        l3_eq_bs = 0.0
         br_eq, br_bd = 0.0, 0.0
         br_eq_bs, br_bd_bs = 0.0, 0.0
         c = p.annual_contribution
@@ -454,7 +453,6 @@ class ScenarioL3Broker(Scenario):
 
         for _ in range(p.years_accum):
             l3_eq *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
-            l3_bd *= 1 + p.bond_mean - p.fund_fee - p.pension_fee
             br_eq *= 1 + p.equity_mean - p.fund_fee
             br_bd *= 1 + p.bond_mean - p.fund_fee
 
