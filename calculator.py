@@ -197,6 +197,43 @@ class Scenario:
     ) -> tuple[float, Pot]:
         raise NotImplementedError
 
+    def prepare_decum(self, init_pot: Pot, scenario_pot: Pot, params: Params) -> Pot:
+        """
+        Unify init_pot into pot_scenario so that at retirement
+        we have exactly eq, eq_bs, bd, bd_bs (plus net_ann if any).
+        This avoids leftover sub-pots that never decumulate.
+        """
+        final = Pot()
+
+        # 1) Convert Rürup => net annuity
+        final.rurup += scenario_pot.rurup
+        final.rurup += init_pot.rurup
+        if final.rurup > 0:
+            gross_ann = final.rurup * params.ruerup_ann_rate
+            net_ann_init = gross_ann * (1 - params.ruerup_tax - params.ruerup_dist_fee)
+            final.net_ann += scenario_pot.net_ann + net_ann_init
+            final.rurup = 0
+
+        # 2) Convert L3 => lumpsum half CG => eq
+        final.l3_eq += scenario_pot.l3_eq
+        final.l3_eq += init_pot.l3_eq
+        if final.l3_eq > 0:
+            gains = max(0, final.l3_eq - final.l3_eq_bs)
+            tax_ = gains * params.cg_tax_half
+            net_l3 = max(0, final.l3_eq - tax_)
+            final.br_eq += net_l3
+            final.br_eq_bs += net_l3
+            final.l3_eq = 0
+            final.l3_eq_bs = 0
+
+        final.net_ann += scenario_pot.net_ann
+        final.br_eq += scenario_pot.br_eq
+        final.br_eq_bs += scenario_pot.br_eq_bs
+        final.br_bd += scenario_pot.br_bd
+        final.br_bd_bs += scenario_pot.br_bd_bs
+
+        return final
+
 
 # --------------------------------------------------------
 # 5. ACCUMULATE INITIAL POTS
@@ -215,44 +252,6 @@ def accumulate_initial_pots(p: Params) -> Pot:
         pot.br_eq *= 1 + p.equity_mean - p.fund_fee
         pot.l3_eq *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
     return pot
-
-
-def prepare_decum(init_pot: Pot, scenario_pot: Pot, params: Params) -> Pot:
-    """
-    Unify init_pot into pot_scenario so that at retirement
-    we have exactly eq, eq_bs, bd, bd_bs (plus net_ann if any).
-    This avoids leftover sub-pots that never decumulate.
-    """
-    final = Pot()
-
-    # 1) Convert Rürup => net annuity
-    final.rurup += scenario_pot.rurup
-    final.rurup += init_pot.rurup
-    if final.rurup > 0:
-        gross_ann = final.rurup * params.ruerup_ann_rate
-        net_ann_init = gross_ann * (1 - params.ruerup_tax - params.ruerup_dist_fee)
-        final.net_ann += scenario_pot.net_ann + net_ann_init
-        final.rurup = 0
-
-    # 2) Convert L3 => lumpsum half CG => eq
-    final.l3_eq += scenario_pot.l3_eq
-    final.l3_eq += init_pot.l3_eq
-    if final.l3_eq > 0:
-        gains = max(0, final.l3_eq - final.l3_eq_bs)
-        tax_ = gains * params.cg_tax_half
-        net_l3 = max(0, final.l3_eq - tax_)
-        final.br_eq += net_l3
-        final.br_eq_bs += net_l3
-        final.l3_eq = 0
-        final.l3_eq_bs = 0
-
-    final.net_ann += scenario_pot.net_ann
-    final.br_eq += scenario_pot.br_eq
-    final.br_eq_bs += scenario_pot.br_eq_bs
-    final.br_bd += scenario_pot.br_bd
-    final.br_bd_bs += scenario_pot.br_bd_bs
-
-    return final
 
 
 class ScenarioBroker(Scenario):
@@ -502,7 +501,7 @@ class ScenarioL3Broker(Scenario):
 def simulate_montecarlo(scenario: Scenario, p: Params):
     init_pot = accumulate_initial_pots(p)
     scen_pot = scenario.accumulate(p)
-    final_pot = prepare_decum(init_pot, scen_pot, p)
+    final_pot = scenario.prepare_decum(init_pot, scen_pot, p)
     lifetimes = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
     results = []
     leftover_pots = []
