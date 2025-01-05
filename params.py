@@ -1,12 +1,14 @@
 class Params:
     # Ages
     age_start = 1
-    age_retire = 1
+    age_transition = 62
+    age_retire = 67
     gender = "M"
 
     # Durations
-    years_accum = age_retire - age_start  # e.g. 30
-    glide_path_years = 10
+    years_accum = age_transition - age_start
+    years_transition = age_retire - age_transition
+    glide_path_years = 20
 
     # Annual contributions
     annual_contribution = 1
@@ -35,7 +37,7 @@ class Params:
     # Desired net annual spending at retirement
     inflation_mean = 0.02
     inflation_std = 0.01
-    desired_spend = 1.0 * (1.02 ** (years_accum))
+    desired_spend = 1 * (1.02 ** (years_accum))
 
     # Number of Monte Carlo runs
     num_sims = 50_000  # for speed in example
@@ -49,3 +51,4 @@ class Params:
     initial_broker_bs = 1
     initial_l3 = 1
     initial_l3_bs = 1
+    public_pension = 1
