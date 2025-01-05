@@ -769,7 +769,7 @@ def simulate_montecarlo(scenario: Scenario, p: Params):
             for k in ["eq", "bd", "br_eq", "br_bd", "l3_eq", "l3_bd"]:
                 leftover_now += sim_pot.get(k, 0.0)
 
-            if leftover_now <= 0:
+            if net_wd < needed_net:
                 ran_out = True
                 break
 
