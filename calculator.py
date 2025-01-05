@@ -1,54 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
-
-# --------------------------------------------------------
-# 1. SHARED PARAMETERS
-# --------------------------------------------------------
-class Params:
-    # Ages
-    age_start = 37
-    age_retire = 67
-    gender = "M"
-
-    # Durations
-    years_accum = age_retire - age_start  # e.g. 30
-    glide_path_years = 10
-
-    # Annual contributions
-    annual_contribution = 12_000
-
-    pension_fee = 0.003
-    fund_fee = 0.002
-
-    # Decumulation (glide path) returns
-    equity_mean = 0.08
-    equity_std = 0.18
-    bond_mean = 0.04
-    bond_std = 0.05
-
-    # Taxes
-    cg_tax_normal = 0.26375  # 26.375% normal CG
-    cg_tax_half = 0.26375 / 2  # ~13.1875% for lumpsum at 67
-    ruerup_tax = 0.28  # 28% flat on Rürup annuity
-
-    # Rürup annuity
-    ruerup_ann_rate = 0.04
-    ruerup_dist_fee = 0.015
-
-    # Marginal tax while working => invests refund in scenario B, D
-    tax_working = 0.4431
-
-    # Desired net annual spending at retirement
-    inflation_mean = 0.02
-    inflation_std = 0.01
-    desired_spend = 36_000.0 * (1.02 ** (years_accum))
-
-    # Number of Monte Carlo runs
-    num_sims = 100_000
-
-    # Discount rate for net present value
-    discount_rate = 0.01
+from params import Params
 
 
 # --------------------------------------------------------
@@ -149,23 +101,19 @@ def sample_lifetime_from67(gender="M", size=10_000):
             ]
         )
     pdf = pdf / pdf.sum()
-    draws = np.random.choice(ages, p=pdf, size=size)
-    return draws
+    return np.random.choice(ages, p=pdf, size=size)
 
 
 def shift_equity_to_bonds(eq, eq_bs, bd, bd_bs, fraction, cgt):
-    """
-    Shift 'fraction' of the equity pot into the bond pot.
-    fraction = 0.1 => shift 10% of eq pot => bonds.
-    """
+    """Shift 'fraction' of eq -> bd, paying cgt on the gains portion."""
     moved = eq * fraction
     bs_moved = eq_bs * fraction
 
     eq_after = eq - moved
     eq_bs_after = eq_bs - bs_moved
 
-    # Gains = moved - bs_moved => taxed at cgt
-    tax_amount = (moved - bs_moved) * cgt
+    gains = moved - bs_moved
+    tax_amount = gains * cgt
     moved_net = moved - tax_amount
 
     bd_after = bd + moved_net
@@ -180,9 +128,8 @@ def present_value(cf, year, discount_rate):
 
 def solve_gross_for_net(eq, bd, eq_basis, bd_basis, net_needed, cg_tax):
     """
-    Solve how much 'gross' must be withdrawn to get 'net_needed' after capital gains tax.
-    Remove from bonds first, then from equity.
-    Returns (gross_wd, net_wd, eq_after, bd_after, eq_bs_after, bd_bs_after).
+    Withdraw 'net_needed' from eq+bd, paying cg_tax on gains.
+    BONDS first, then EQUITY.
     """
     total_pot = eq + bd
     if total_pot <= 0:
@@ -191,18 +138,19 @@ def solve_gross_for_net(eq, bd, eq_basis, bd_basis, net_needed, cg_tax):
     net_withdrawn = 0
     gross_withdrawn = 0
 
-    # BONDS FIRST
     bd_after = bd
     eq_after = eq
     bd_bs_after = bd_basis
     eq_bs_after = eq_basis
+
     still_needed = net_needed
 
+    # 1) BOND
     if bd > 0:
-        net_bd = bd - (bd - bd_basis) * cg_tax  # net if we fully withdrew
+        net_bd = bd - (bd - bd_basis) * cg_tax
         portion = min(still_needed, net_bd)
         if portion > 0:
-            frac = portion / net_bd  # fraction of the entire bond pot
+            frac = portion / net_bd
             gross_bd_withdrawal = frac * bd
             bd_bs_after = bd_basis * (1 - frac)
             bd_after = bd - gross_bd_withdrawal
@@ -211,7 +159,7 @@ def solve_gross_for_net(eq, bd, eq_basis, bd_basis, net_needed, cg_tax):
             gross_withdrawn += gross_bd_withdrawal
             still_needed -= portion
 
-    # EQUITY NEXT
+    # 2) EQUITY
     if (still_needed > 0) and (eq_after > 0):
         net_eq = eq_after - (eq_after - eq_bs_after) * cg_tax
         portion2 = min(still_needed, net_eq)
@@ -240,11 +188,8 @@ def solve_gross_for_net(eq, bd, eq_basis, bd_basis, net_needed, cg_tax):
 # --------------------------------------------------------
 class Scenario:
     """
-    Base Scenario. Subclasses should implement:
-      - accumulate(params): -> dict of pot states
-      - prepare_decum(pot_dict, params): -> transformed pot_dict
-      - decumulate_year(pot_dict, params, current_year, needed_net, rand_returns)
-        -> (net_withdrawn_this_year, updated_pot_dict)
+    Base scenario, dealing only with *new contributions*
+    (no references to p.initial_* here).
     """
 
     def accumulate(self, p: Params):
@@ -260,10 +205,91 @@ class Scenario:
 
 
 # --------------------------------------------------------
-# 4. SCENARIO A
-#    Broker Only => eq->bond decum
+# 4. ACCUMULATE INITIAL POTS
 # --------------------------------------------------------
+def accumulate_initial_pots(p: Params):
+    """
+    Grows initial Rürup, Broker, L3 from age_start..age_retire
+    with eq returns (minus fees).
+    - Rürup => eq mean - fund_fee - pension_fee
+    - Broker => eq mean - fund_fee
+    - L3 => eq mean - fund_fee - pension_fee
+    """
+    r = p.initial_rurup
+    br = p.initial_broker
+    br_bs = p.initial_broker_bs
+    l3 = p.initial_l3
+    l3_bs = p.initial_l3_bs
+
+    for _ in range(p.years_accum):
+        # Rürup
+        r *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
+        # Broker
+        br *= 1 + p.equity_mean - p.fund_fee
+        # L3
+        l3 *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
+
+    return {
+        "rurup": r,
+        "broker": br,
+        "broker_bs": br_bs,  # basis doesn't grow
+        "l3": l3,
+        "l3_bs": l3_bs,  # basis doesn't grow
+    }
+
+
+# --------------------------------------------------------
+# 5. MERGE PREEXISTING POTS
+# --------------------------------------------------------
+def add_initial_pots(pot_dict: dict, p: Params, init_dict: dict) -> dict:
+    """
+    Merges preexisting final pots into scenario pot at retirement:
+      - Rürup => net annuity
+      - Broker => eq/eq_bs
+      - L3 => lumpsum half CG => eq/eq_bs
+    """
+    # Rürup => annuity
+    if init_dict["rurup"] > 0:
+        gross_ann = init_dict["rurup"] * p.ruerup_ann_rate
+        net_ann = gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
+        pot_dict["net_ann"] = pot_dict.get("net_ann", 0.0) + net_ann
+
+    # Broker => eq pot
+    eq_curr = pot_dict.get("eq", 0.0)
+    eq_bs_curr = pot_dict.get("eq_bs", 0.0)
+
+    eq_curr += init_dict["broker"]
+    eq_bs_curr += init_dict["broker_bs"]
+
+    pot_dict["eq"] = eq_curr
+    pot_dict["eq_bs"] = eq_bs_curr
+
+    if "bd" not in pot_dict:
+        pot_dict["bd"] = 0.0
+    if "bd_bs" not in pot_dict:
+        pot_dict["bd_bs"] = 0.0
+
+    # L3 => lumpsum half CG
+    if init_dict["l3"] > 0:
+        gains = max(0, init_dict["l3"] - init_dict["l3_bs"])
+        tax_ = gains * p.cg_tax_half
+        net_l3 = max(0, init_dict["l3"] - tax_)
+
+        pot_dict["eq"] += net_l3
+        pot_dict["eq_bs"] += net_l3
+
+    return pot_dict
+
+
+# --------------------------------------------------------
+# 6. SCENARIOS A-F
+# --------------------------------------------------------
+
+
+# SCENARIO A
 class ScenarioA(Scenario):
+    """Broker Only => eq->bond decum"""
+
     def accumulate(self, p: Params):
         pot = 0.0
         basis = 0.0
@@ -273,178 +299,12 @@ class ScenarioA(Scenario):
             pot *= 1 + p.equity_mean - p.fund_fee
             pot += ann_contr
             basis += ann_contr
-            # optionally grow ann_contr with inflation if you want
-            # ann_contr *= 1.02
+            ann_contr *= 1.02  # optional inflation of contributions
 
-        # final year's return
+        # final year returns
         pot *= 1 + p.equity_mean - p.fund_fee
 
-        return {
-            "eq": pot,
-            "eq_bs": basis,
-            "bd": 0.0,
-            "bd_bs": 0.0,
-        }
-
-    def decumulate_year(self, pot_dict, p, current_year, needed_net, rand_returns):
-        eq = pot_dict["eq"]
-        bd = pot_dict["bd"]
-        eq_bs = pot_dict["eq_bs"]
-        bd_bs = pot_dict["bd_bs"]
-
-        # SHIFT eq->bond during glide_path_years
-        if current_year < p.glide_path_years:
-            fraction = 1.0 / p.glide_path_years
-            eq, eq_bs, bd, bd_bs = shift_equity_to_bonds(
-                eq, eq_bs, bd, bd_bs, fraction, p.cg_tax_normal
-            )
-
-        # Apply random returns
-        eq *= 1 + rand_returns["eq"]
-        bd *= 1 + rand_returns["bd"]
-
-        # Partial withdrawal
-        _, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = solve_gross_for_net(
-            eq, bd, eq_bs, bd_bs, needed_net, p.cg_tax_normal
-        )
-
-        pot_dict["eq"] = eq_after
-        pot_dict["bd"] = bd_after
-        pot_dict["eq_bs"] = eq_bs_after
-        pot_dict["bd_bs"] = bd_bs_after
-
-        return net_, pot_dict
-
-
-# --------------------------------------------------------
-# 5. SCENARIO B
-#    Rürup + Broker => eq->bond decum
-# --------------------------------------------------------
-class ScenarioB(Scenario):
-    """
-    Accumulation:
-      - rpot grows with (equity_mean - fund_fee - pension_fee), plus p.annual_contribution
-      - Broker pot grows with (equity_mean - fund_fee),
-        plus 'refund' = p.annual_contribution * p.tax_working
-      - At retirement => Rürup is converted to a net annuity each year
-      - Broker pot => eq->bond decum + partial withdrawal of needed = (desired_spend - net_ann)
-    """
-
-    def accumulate(self, p: Params):
-        rpot = 0.0
-        br = 0.0
-        br_bs = 0.0
-        ann_contr = p.annual_contribution
-
-        for _ in range(p.years_accum):
-            # Rürup
-            rpot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
-            rpot += ann_contr
-
-            # Broker = invests the "refund"
-            refund = ann_contr * p.tax_working
-            br *= 1 + p.equity_mean - p.fund_fee
-            br += refund
-            br_bs += refund
-            # ann_contr *= 1.02  # optional inflation growth
-
-        # final year's return
-        rpot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
-        br *= 1 + p.equity_mean - p.fund_fee
-
-        return {
-            "rpot": rpot,
-            "br_eq": br,
-            "br_eq_bs": br_bs,
-            "br_bd": 0.0,
-            "br_bd_bs": 0.0,
-        }
-
-    def prepare_decum(self, pot_dict, p: Params):
-        # Convert Rürup pot into net annuity
-        rpot = pot_dict["rpot"]
-        gross_ann = rpot * p.ruerup_ann_rate
-        net_ann = gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
-
-        pot_dict["net_ann"] = net_ann
-        # We no longer need 'rpot' itself for withdrawals because it's annuitized
-        pot_dict.pop("rpot")
-
-        return pot_dict
-
-    def decumulate_year(self, pot_dict, p, current_year, needed_net, rand_returns):
-        # net_ann from Rürup
-        net_ann = pot_dict["net_ann"]
-        # Our broker pot => eq + bd
-        eq = pot_dict["br_eq"]
-        bd = pot_dict["br_bd"]
-        eq_bs = pot_dict["br_eq_bs"]
-        bd_bs = pot_dict["br_bd_bs"]
-
-        # SHIFT eq->bond
-        if current_year < p.glide_path_years:
-            fraction = 1.0 / p.glide_path_years
-            eq, eq_bs, bd, bd_bs = shift_equity_to_bonds(
-                eq, eq_bs, bd, bd_bs, fraction, p.cg_tax_normal
-            )
-
-        # Apply random returns
-        eq *= 1 + rand_returns["eq"]
-        bd *= 1 + rand_returns["bd"]
-
-        # needed from broker pot = desired_spend - net_ann
-        needed_broker = max(0, needed_net - net_ann)
-
-        # partial withdrawal from broker
-        _, net_wd, eq_after, bd_after, eq_bs_after, bd_bs_after = solve_gross_for_net(
-            eq, bd, eq_bs, bd_bs, needed_broker, p.cg_tax_normal
-        )
-
-        # total net = annuity + net from broker
-        total_net = net_ann + net_wd
-
-        pot_dict["br_eq"] = eq_after
-        pot_dict["br_bd"] = bd_after
-        pot_dict["br_eq_bs"] = eq_bs_after
-        pot_dict["br_bd_bs"] = bd_bs_after
-
-        return total_net, pot_dict
-
-
-# --------------------------------------------------------
-# 6. SCENARIO C
-#    Level 3 => lumpsum half CG => eq->bond decum
-# --------------------------------------------------------
-class ScenarioC(Scenario):
-    def accumulate(self, p: Params):
-        pot = 0.0
-        bs = 0.0
-        ann_contr = p.annual_contribution
-
-        for _ in range(p.years_accum):
-            pot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
-            pot += ann_contr
-            bs += ann_contr
-            # ann_contr *= 1.02  # optional
-
-        pot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
-        return {"l3_pot": pot, "l3_bs": bs}
-
-    def prepare_decum(self, pot_dict, p: Params):
-        pot = pot_dict["l3_pot"]
-        bs = pot_dict["l3_bs"]
-        gains = max(0, pot - bs)
-        tax_ = gains * p.cg_tax_half
-        net_lump = max(0, pot - tax_ - pot * p.ruerup_dist_fee)
-
-        # that lumpsum => eq pot
-        new_dict = {
-            "eq": net_lump,
-            "eq_bs": net_lump,
-            "bd": 0.0,
-            "bd_bs": 0.0,
-        }
-        return new_dict
+        return {"eq": pot, "eq_bs": basis, "bd": 0.0, "bd_bs": 0.0}
 
     def decumulate_year(self, pot_dict, p, current_year, needed_net, rand_returns):
         eq = pot_dict["eq"]
@@ -454,12 +314,12 @@ class ScenarioC(Scenario):
 
         # SHIFT eq->bond
         if current_year < p.glide_path_years:
-            fraction = 1.0 / p.glide_path_years
+            frac = 1.0 / p.glide_path_years
             eq, eq_bs, bd, bd_bs = shift_equity_to_bonds(
-                eq, eq_bs, bd, bd_bs, fraction, p.cg_tax_normal
+                eq, eq_bs, bd, bd_bs, frac, p.cg_tax_normal
             )
 
-        # Apply random returns
+        # random returns
         eq *= 1 + rand_returns["eq"]
         bd *= 1 + rand_returns["bd"]
 
@@ -476,18 +336,152 @@ class ScenarioC(Scenario):
         return net_, pot_dict
 
 
-# --------------------------------------------------------
-# 7. SCENARIO D
-#    Rürup + L3 lumpsum => eq->bond decum
-# --------------------------------------------------------
+# SCENARIO B
+class ScenarioB(Scenario):
+    """
+    Rürup + Broker
+    - Rürup pot => net annuity
+    - Broker eq->bond decum
+    """
+
+    def accumulate(self, p: Params):
+        rpot = 0.0
+        br = 0.0
+        br_bs = 0.0
+        ann_contr = p.annual_contribution
+
+        for _ in range(p.years_accum):
+            rpot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
+            rpot += ann_contr
+
+            # broker invests "refund"
+            refund = ann_contr * p.tax_working
+            br *= 1 + p.equity_mean - p.fund_fee
+            br += refund
+            br_bs += refund
+
+            ann_contr *= 1.02
+
+        rpot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
+        br *= 1 + p.equity_mean - p.fund_fee
+
+        return {
+            "rpot": rpot,
+            "br_eq": br,
+            "br_eq_bs": br_bs,
+            "br_bd": 0.0,
+            "br_bd_bs": 0.0,
+        }
+
+    def prepare_decum(self, pot_dict, p: Params):
+        # convert rpot => net annuity
+        rp = pot_dict["rpot"]
+        gross_ann = rp * p.ruerup_ann_rate
+        net_ann = gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
+
+        pot_dict["net_ann"] = pot_dict.get("net_ann", 0.0) + net_ann
+        pot_dict.pop("rpot", None)
+        return pot_dict
+
+    def decumulate_year(self, pot_dict, p, current_year, needed_net, rand_returns):
+        net_ann = pot_dict.get("net_ann", 0.0)
+        eq = pot_dict["br_eq"]
+        bd = pot_dict["br_bd"]
+        eq_bs = pot_dict["br_eq_bs"]
+        bd_bs = pot_dict["br_bd_bs"]
+
+        # SHIFT eq->bd
+        if current_year < p.glide_path_years:
+            frac = 1.0 / p.glide_path_years
+            eq, eq_bs, bd, bd_bs = shift_equity_to_bonds(
+                eq, eq_bs, bd, bd_bs, frac, p.cg_tax_normal
+            )
+
+        # returns
+        eq *= 1 + rand_returns["eq"]
+        bd *= 1 + rand_returns["bd"]
+
+        needed_broker = max(0, needed_net - net_ann)
+        _, net_wd, eq_after, bd_after, eq_bs_after, bd_bs_after = solve_gross_for_net(
+            eq, bd, eq_bs, bd_bs, needed_broker, p.cg_tax_normal
+        )
+
+        total_net = net_ann + net_wd
+
+        pot_dict["br_eq"] = eq_after
+        pot_dict["br_bd"] = bd_after
+        pot_dict["br_eq_bs"] = eq_bs_after
+        pot_dict["br_bd_bs"] = bd_bs_after
+
+        return total_net, pot_dict
+
+
+# SCENARIO C
+class ScenarioC(Scenario):
+    """
+    Level3 => lumpsum half CG => eq->bond decum
+    """
+
+    def accumulate(self, p: Params):
+        pot = 0.0
+        basis = 0.0
+        ann_contr = p.annual_contribution
+        for _ in range(p.years_accum):
+            pot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
+            pot += ann_contr
+            basis += ann_contr
+            ann_contr *= 1.02
+
+        pot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
+        return {"l3_pot": pot, "l3_bs": basis}
+
+    def prepare_decum(self, pot_dict, p: Params):
+        pot = pot_dict["l3_pot"]
+        bs = pot_dict["l3_bs"]
+        gains = max(0, pot - bs)
+        tax_ = gains * p.cg_tax_half
+        dist_fee_amt = pot * p.ruerup_dist_fee  # optional
+
+        net_lump = max(0, pot - tax_ - dist_fee_amt)
+
+        return {
+            "eq": net_lump,
+            "eq_bs": net_lump,
+            "bd": 0.0,
+            "bd_bs": 0.0,
+        }
+
+    def decumulate_year(self, pot_dict, p, current_year, needed_net, rand_returns):
+        eq = pot_dict["eq"]
+        bd = pot_dict["bd"]
+        eq_bs = pot_dict["eq_bs"]
+        bd_bs = pot_dict["bd_bs"]
+
+        if current_year < p.glide_path_years:
+            frac = 1.0 / p.glide_path_years
+            eq, eq_bs, bd, bd_bs = shift_equity_to_bonds(
+                eq, eq_bs, bd, bd_bs, frac, p.cg_tax_normal
+            )
+
+        eq *= 1 + rand_returns["eq"]
+        bd *= 1 + rand_returns["bd"]
+
+        _, net_, eq_after, bd_after, eq_bs_after, bd_bs_after = solve_gross_for_net(
+            eq, bd, eq_bs, bd_bs, needed_net, p.cg_tax_normal
+        )
+
+        pot_dict["eq"] = eq_after
+        pot_dict["bd"] = bd_after
+        pot_dict["eq_bs"] = eq_bs_after
+        pot_dict["bd_bs"] = bd_bs_after
+
+        return net_, pot_dict
+
+
+# SCENARIO D
 class ScenarioD(Scenario):
     """
-    Accumulate:
-      - Rürup pot (rp) => final annuity
-      - L3 pot => lumpsum half CG => eq pot
-    Decumulate:
-      - net annuity from Rürup
-      - partial withdrawal from lumpsum eq->bd
+    Rürup + L3 lumpsum => eq->bond decum
     """
 
     def accumulate(self, p: Params):
@@ -495,18 +489,18 @@ class ScenarioD(Scenario):
         l3 = 0.0
         l3_bs = 0.0
         ann_contr = p.annual_contribution
-
         for _ in range(p.years_accum):
             # Rürup
             rp *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
             rp += ann_contr
 
-            # L3 invests the "refund" = ann_contr * p.tax_working
+            # L3 invests 'refund'
             refund = ann_contr * p.tax_working
             l3 *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
             l3 += refund
             l3_bs += refund
-            # ann_contr *= 1.02  # optional
+
+            ann_contr *= 1.02
 
         rp *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
         l3 *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
@@ -514,26 +508,23 @@ class ScenarioD(Scenario):
         return {"rp": rp, "l3": l3, "l3_bs": l3_bs}
 
     def prepare_decum(self, pot_dict, p: Params):
-        # 1) Rürup => net annuity
         rp = pot_dict["rp"]
         gross_ann = rp * p.ruerup_ann_rate
         net_ann = gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
 
-        # 2) lumpsum from L3 => half CG
         l3 = pot_dict["l3"]
-        l3_bs = pot_dict["l3_bs"]
-        gains = max(0, l3 - l3_bs)
+        bs = pot_dict["l3_bs"]
+        gains = max(0, l3 - bs)
         tax_ = gains * p.cg_tax_half
         net_l3 = max(0, l3 - tax_)
 
-        new_dict = {
+        return {
             "net_ann": net_ann,
             "eq": net_l3,
             "eq_bs": net_l3,
             "bd": 0.0,
             "bd_bs": 0.0,
         }
-        return new_dict
 
     def decumulate_year(self, pot_dict, p, current_year, needed_net, rand_returns):
         net_ann = pot_dict["net_ann"]
@@ -542,21 +533,20 @@ class ScenarioD(Scenario):
         eq_bs = pot_dict["eq_bs"]
         bd_bs = pot_dict["bd_bs"]
 
-        # SHIFT eq->bond
         if current_year < p.glide_path_years:
-            fraction = 1.0 / p.glide_path_years
+            frac = 1.0 / p.glide_path_years
             eq, eq_bs, bd, bd_bs = shift_equity_to_bonds(
-                eq, eq_bs, bd, bd_bs, fraction, p.cg_tax_normal
+                eq, eq_bs, bd, bd_bs, frac, p.cg_tax_normal
             )
 
-        # Apply random returns
         eq *= 1 + rand_returns["eq"]
         bd *= 1 + rand_returns["bd"]
 
-        needed_broker = max(0, needed_net - net_ann)
+        needed = max(0, needed_net - net_ann)
         _, net_wd, eq_after, bd_after, eq_bs_after, bd_bs_after = solve_gross_for_net(
-            eq, bd, eq_bs, bd_bs, needed_broker, p.cg_tax_normal
+            eq, bd, eq_bs, bd_bs, needed, p.cg_tax_normal
         )
+
         total_net = net_ann + net_wd
 
         pot_dict["eq"] = eq_after
@@ -567,19 +557,13 @@ class ScenarioD(Scenario):
         return total_net, pot_dict
 
 
-# --------------------------------------------------------
-# 8. SCENARIO E
-#    L3 as annuity => taxed at 17%? (as per your snippet)
-# --------------------------------------------------------
+# SCENARIO E
 class ScenarioE(Scenario):
     """
-    This scenario's original code simply compares net annuity to desired spending
-    and returns run-out if spend > net_ann in any year.
-    For demonstration, we'll replicate that logic.
+    L3 as an annuity => taxed at 17% (example from snippet)
     """
 
     def accumulate(self, p: Params):
-        # same accumulation as scenarioC, but then fully turned into annuity at 67
         pot = 0.0
         bs = 0.0
         ann_contr = p.annual_contribution
@@ -587,49 +571,33 @@ class ScenarioE(Scenario):
             pot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
             pot += ann_contr
             bs += ann_contr
+            ann_contr *= 1.02
+
         pot *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
         return {"l3_pot": pot, "l3_bs": bs}
 
     def prepare_decum(self, pot_dict, p: Params):
-        # Convert entire pot to an annuity taxed at 17%?
-        # Original code snippet: net_ann = pot * ruerup_ann_rate * (1 - p.ruerup_tax*0.17 - p.ruerup_dist_fee)
         pot = pot_dict["l3_pot"]
-        # basis = pot_dict["l3_bs"]  # not used
         gross_ann = pot * p.ruerup_ann_rate
-        # The snippet is ambiguous about "p.ruerup_tax * 0.17" but let's do exactly the original:
+        # taxed at 17% => p.ruerup_tax * 0.17
         net_ann = gross_ann * (1 - p.ruerup_tax * 0.17 - p.ruerup_dist_fee)
         return {"net_ann": net_ann}
 
     def decumulate_year(self, pot_dict, p, current_year, needed_net, rand_returns):
-        """
-        The original code: if spend_year > net_ann, we count it as run-out.
-        We'll return net_ann if spend_year <= net_ann, else partial or 0.
-        """
         net_ann = pot_dict["net_ann"]
-        # There's no pot to withdraw from.
-        # If needed_net > net_ann => we effectively "run out" for that year.
-        net_payout = net_ann  # every year
-        # We won't modify anything in pot_dict, because there's no leftover pot.
-        return net_payout, pot_dict
+        # If needed_net > net_ann => partial run out
+        return net_ann, pot_dict
 
 
-# --------------------------------------------------------
-# 9. SCENARIO F
-#    50% L3 with 5yr liquidation at 62..66, 50% Broker => eq->bond at 75
-# --------------------------------------------------------
+# SCENARIO F
 class ScenarioF(Scenario):
     """
-    Accumulate:
-      - L3 pot eq/bd with partial eq->bd from age 62..66
-      - Broker pot eq/bd, all eq until 67
-    Decumulate from 67:
-      - random returns each year
-      - shift broker eq->bond from age 72..(72+glide_path_years)
-      - partial withdrawal from combined pots
+    50% L3, 50% Broker
+    L3 eq->bd from age 62..66,
+    Broker eq->bd from age 72..(72+p.glide_path_years)
     """
 
     def accumulate(self, p: Params):
-        # We'll track: (L3 eq, L3 bd, L3 eq_bs, L3 bd_bs) and (Broker eq, Broker bd, eq_bs, bd_bs)
         l3_eq = 0.0
         l3_bd = 0.0
         l3_eq_bs = 0.0
@@ -640,41 +608,40 @@ class ScenarioF(Scenario):
         br_eq_bs = 0.0
         br_bd_bs = 0.0
 
-        annual_l3_perc = 0.5
         ann_contr = p.annual_contribution
+        half = 0.5
 
-        for year in range(p.years_accum):
-            current_age = p.age_start + year
+        for yr in range(p.years_accum):
+            age_now = p.age_start + yr
 
-            # 1) apply returns
+            # returns
             l3_eq *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
             l3_bd *= 1 + p.bond_mean - p.fund_fee - p.pension_fee
 
             br_eq *= 1 + p.equity_mean - p.fund_fee
             br_bd *= 1 + p.bond_mean - p.fund_fee
 
-            # 2) add new contributions (split 50/50 to L3 eq and Broker eq)
-            l3_contr = ann_contr * annual_l3_perc
-            br_contr = ann_contr * (1 - annual_l3_perc)
+            # new contributions
+            l3_contr = ann_contr * half
+            br_contr = ann_contr * (1 - half)
 
             l3_eq += l3_contr
             l3_eq_bs += l3_contr
             br_eq += br_contr
             br_eq_bs += br_contr
 
-            # optionally grow future contributions with inflation
-            # ann_contr *= 1.02
+            ann_contr *= 1.02
 
-            # 3) If current_age >= 62 and < 67, shift L3 eq->bond linearly over 5 years
-            #    i.e. each year shift 20%
-            if 62 <= current_age < 67:
-                fraction = 1.0 / 5.0
-                l3_bd_before = l3_bd
+            # shift L3 eq->bd at age 62..66
+            if 62 <= age_now < 67:
+                frac = 1.0 / 5.0
+                bd_before = l3_bd
                 l3_eq, l3_eq_bs, l3_bd, l3_bd_bs = shift_equity_to_bonds(
-                    l3_eq, l3_eq_bs, l3_bd, l3_bd_bs, fraction, p.cg_tax_half
+                    l3_eq, l3_eq_bs, l3_bd, l3_bd_bs, frac, p.cg_tax_half
                 )
-                delta_bd = l3_bd - l3_bd_before
-                l3_bd -= delta_bd * p.ruerup_dist_fee
+                delta = l3_bd - bd_before
+                # distribution fee
+                l3_bd -= delta * p.ruerup_dist_fee
 
         return {
             "l3_eq": l3_eq,
@@ -688,20 +655,10 @@ class ScenarioF(Scenario):
         }
 
     def prepare_decum(self, pot_dict, p: Params):
-        """
-        At age 67 => no lumpsum or annuity creation. We just begin decum.
-        The scenario's eq/bd pots are carried forward.
-        """
+        # no lumpsum or annuity creation at 67
         return pot_dict
 
     def decumulate_year(self, pot_dict, p, current_year, needed_net, rand_returns):
-        """
-        1) random returns
-        2) shift broker eq->bd after age 72..(72+p.glide_path_years)
-        3) combine L3 + broker for partial withdrawal
-        4) proportionally re-split eq/bd back into L3 vs. broker
-        """
-        # read pots
         eq_l3 = pot_dict["l3_eq"]
         bd_l3 = pot_dict["l3_bd"]
         eq_bs_l3 = pot_dict["l3_eq_bs"]
@@ -712,24 +669,22 @@ class ScenarioF(Scenario):
         eq_bs_br = pot_dict["br_eq_bs"]
         bd_bs_br = pot_dict["br_bd_bs"]
 
-        # 1) apply random returns to each pot
+        # returns
         eq_l3 *= 1 + np.random.normal(p.equity_mean, p.equity_std)
         bd_l3 *= 1 + np.random.normal(p.bond_mean, p.bond_std)
 
         eq_br *= 1 + rand_returns["eq"]
         bd_br *= 1 + rand_returns["bd"]
 
-        # 2) SHIFT broker eq->bond at ages 72..(72 + p.glide_path_years)
-        # i.e. a linear shift over p.glide_path_years after age 72
-        # We'll see how many years we are past 72:
-        retired_age = p.age_retire + current_year  # e.g. 67 + t
+        # shift broker eq->bd at age 72..(72 + p.glide_path_years)
+        retired_age = p.age_retire + current_year
         if retired_age >= 72 and (retired_age - 72) < p.glide_path_years:
-            fraction = 1.0 / p.glide_path_years
+            frac = 1.0 / p.glide_path_years
             eq_br, eq_bs_br, bd_br, bd_bs_br = shift_equity_to_bonds(
-                eq_br, eq_bs_br, bd_br, bd_bs_br, fraction, p.cg_tax_normal
+                eq_br, eq_bs_br, bd_br, bd_bs_br, frac, p.cg_tax_normal
             )
 
-        # 3) combine L3 + broker for withdrawal
+        # combine for withdrawal
         eq_total = eq_l3 + eq_br
         bd_total = bd_l3 + bd_br
         eq_bs_total = eq_bs_l3 + eq_bs_br
@@ -739,86 +694,80 @@ class ScenarioF(Scenario):
             eq_total, bd_total, eq_bs_total, bd_bs_total, needed_net, p.cg_tax_normal
         )
 
-        # 4) re-split eq_after, bd_after back into L3 vs. broker in proportion
-        #    to their share of eq_total and bd_total before the withdrawal
-        # eq_l3 was eq_total * ratio_l3, eq_br was eq_total * ratio_br, etc.
+        # re-split
         eq_ratio_l3 = eq_l3 / eq_total if eq_total > 0 else 0
         eq_ratio_br = eq_br / eq_total if eq_total > 0 else 0
         bd_ratio_l3 = bd_l3 / bd_total if bd_total > 0 else 0
         bd_ratio_br = bd_br / bd_total if bd_total > 0 else 0
 
         pot_dict["l3_eq"] = eq_after * eq_ratio_l3
-        pot_dict["br_eq"] = eq_after * eq_ratio_br
         pot_dict["l3_bd"] = bd_after * bd_ratio_l3
-        pot_dict["br_bd"] = bd_after * bd_ratio_br
-
         pot_dict["l3_eq_bs"] = eq_bs_after * eq_ratio_l3
-        pot_dict["br_eq_bs"] = eq_bs_after * eq_ratio_br
         pot_dict["l3_bd_bs"] = bd_bs_after * bd_ratio_l3
+
+        pot_dict["br_eq"] = eq_after * eq_ratio_br
+        pot_dict["br_bd"] = bd_after * bd_ratio_br
+        pot_dict["br_eq_bs"] = eq_bs_after * eq_ratio_br
         pot_dict["br_bd_bs"] = bd_bs_after * bd_ratio_br
 
         return net_wd, pot_dict
 
 
 # --------------------------------------------------------
-# 10. MONTE CARLO RUNNER
+# 7. MONTE CARLO RUNNER
 # --------------------------------------------------------
 def simulate_montecarlo(scenario: Scenario, p: Params):
-    # 1) Accumulate
-    pot_dict_accum = scenario.accumulate(p)
-    # 2) Prepare decum (e.g. lumpsum, annuity, etc.)
-    pot_dict_init = scenario.prepare_decum(pot_dict_accum, p)
+    """
+    Steps:
+      1) accumulate_initial_pots => init_dict
+      2) scenario.accumulate => scenario_dict
+      3) scenario.prepare_decum => scenario_dict
+      4) add_initial_pots => final pot at retirement
+      5) MC decum
+    """
+    # 1) Grow preexisting pots
+    init_dict = accumulate_initial_pots(p)
 
-    # 3) For each simulation => random lifetime
+    # 2) scenario accumulate
+    scenario_dict = scenario.accumulate(p)
+
+    # 3) scenario prepare_decum
+    scenario_dict = scenario.prepare_decum(scenario_dict, p)
+
+    # 4) merge
+    pot_dict_init = add_initial_pots(scenario_dict, p, init_dict)
+
+    # 5) Monte Carlo decum
     years_payout = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
 
     results = []
     leftover_pots = []
     outcount = 0
 
-    for i in range(p.num_sims):
+    for _ in range(p.num_sims):
         sim_pot = dict(pot_dict_init)  # shallow copy
         total_spend = 0.0
         ran_out = False
         spend_year = p.desired_spend
-        T = years_payout[i]
+        T = years_payout[np.random.randint(len(years_payout))]
 
         for t in range(T):
-            # Random returns
             eq_r = np.random.normal(p.equity_mean, p.equity_std)
             bd_r = np.random.normal(p.bond_mean, p.bond_std)
 
             needed_net = spend_year
-            net_withdrawn, sim_pot = scenario.decumulate_year(
-                sim_pot,
-                p,
-                current_year=t,
-                needed_net=needed_net,
-                rand_returns={"eq": eq_r, "bd": bd_r},
+            net_wd, sim_pot = scenario.decumulate_year(
+                sim_pot, p, t, needed_net, rand_returns={"eq": eq_r, "bd": bd_r}
             )
 
-            # discount
-            total_spend += present_value(net_withdrawn, t, p.discount_rate)
+            total_spend += present_value(net_wd, t, p.discount_rate)
 
-            # inflation
             infl = np.random.normal(p.inflation_mean, p.inflation_std)
             spend_year *= 1 + infl
 
-            # check run-out
-            # Different scenarios store pot differently, but let's guess eq+bd is the main leftover
             leftover_now = 0.0
-            if "eq" in sim_pot:
-                leftover_now += sim_pot["eq"]
-            if "bd" in sim_pot:
-                leftover_now += sim_pot["bd"]
-            if "br_eq" in sim_pot:
-                leftover_now += sim_pot["br_eq"]
-            if "br_bd" in sim_pot:
-                leftover_now += sim_pot["br_bd"]
-            if "l3_eq" in sim_pot:
-                leftover_now += sim_pot["l3_eq"]
-            if "l3_bd" in sim_pot:
-                leftover_now += sim_pot["l3_bd"]
+            for k in ["eq", "bd", "br_eq", "br_bd", "l3_eq", "l3_bd"]:
+                leftover_now += sim_pot.get(k, 0.0)
 
             if leftover_now <= 0:
                 ran_out = True
@@ -835,6 +784,7 @@ def simulate_montecarlo(scenario: Scenario, p: Params):
         "p10": np.percentile(arr, 10),
         "p50": np.percentile(arr, 50),
         "p90": np.percentile(arr, 90),
+        # leftover pot
         "p50pot": np.percentile(leftover_pots, 50),
         "all_spend": arr,
         "all_pots": np.array(leftover_pots),
@@ -842,11 +792,11 @@ def simulate_montecarlo(scenario: Scenario, p: Params):
 
 
 # --------------------------------------------------------
-# 11. PLOTTING HELPERS
+# 8. PLOTTING HELPERS
 # --------------------------------------------------------
 def plot_distribution(spend_array, scenario_name="Scenario"):
     plt.figure(figsize=(6, 4))
-    plt.hist(spend_array, bins=50, alpha=0.7, color="blue")
+    plt.hist(spend_array, bins=40, alpha=0.7, color="blue")
     plt.title(f"{scenario_name}: Distribution of Total Discounted Spending")
     plt.xlabel("NPV of Spend")
     plt.ylabel("Frequency")
@@ -854,90 +804,65 @@ def plot_distribution(spend_array, scenario_name="Scenario"):
     plt.show()
 
 
-def plot_boxplot(data_dicts, labels):
+def plot_boxplot(data_dicts, labels, title="Boxplot"):
+    """
+    data_dicts: list of result dicts
+    labels: list of scenario names
+    """
     all_data = [res["all_spend"] for res in data_dicts]
-    plt.figure(figsize=(6, 4))
+    plt.figure(figsize=(7, 4))
     plt.boxplot(all_data, labels=labels)
-    plt.title("Boxplot of NPV of Spending by Scenario")
-    plt.ylabel("NPV of Spending")
+    plt.title(title)
+    plt.ylabel("Discounted Spending")
     plt.grid(True)
     plt.show()
 
 
 # --------------------------------------------------------
-# 12. MAIN (Example Usage)
+# 9. MAIN (Example Usage)
 # --------------------------------------------------------
 if __name__ == "__main__":
     p = Params()
 
-    # Scenario A
+    # Instantiate all scenarios
     scenarioA = ScenarioA()
-    resA = simulate_montecarlo(scenarioA, p)
-    print("\nScenario A (Broker Only, eq->bond decum):")
-    print(f"Run-out prob: {resA['prob_runout']*100:.1f}%")
-    print(
-        f"10%: {resA['p10']:,.0f}, median: {resA['p50']:,.0f}, 90%: {resA['p90']:,.0f}, leftover pot: {resA['p50pot']:,.0f}"
-    )
-
-    # Scenario B
     scenarioB = ScenarioB()
-    resB = simulate_montecarlo(scenarioB, p)
-    print("\nScenario B (Rürup + Broker, eq->bond decum):")
-    print(f"Run-out prob: {resB['prob_runout']*100:.1f}%")
-    print(
-        f"10%: {resB['p10']:,.0f}, median: {resB['p50']:,.0f}, 90%: {resB['p90']:,.0f}, leftover pot: {resB['p50pot']:,.0f}"
-    )
-
-    # Scenario C
     scenarioC = ScenarioC()
-    resC = simulate_montecarlo(scenarioC, p)
-    print("\nScenario C (Level3 lumpsum half CG => eq->bond decum):")
-    print(f"Run-out prob: {resC['prob_runout']*100:.1f}%")
-    print(
-        f"10%: {resC['p10']:,.0f}, median: {resC['p50']:,.0f}, 90%: {resC['p90']:,.0f}, leftover pot: {resC['p50pot']:,.0f}"
-    )
-
-    # Scenario D
     scenarioD = ScenarioD()
-    resD = simulate_montecarlo(scenarioD, p)
-    print("\nScenario D (Rürup + L3 lumpsum => eq->bond decum):")
-    print(f"Run-out prob: {resD['prob_runout']*100:.1f}%")
-    print(
-        f"10%: {resD['p10']:,.0f}, median: {resD['p50']:,.0f}, 90%: {resD['p90']:,.0f}, leftover pot: {resD['p50pot']:,.0f}"
-    )
-
-    # Scenario E
     scenarioE = ScenarioE()
-    resE = simulate_montecarlo(scenarioE, p)
-    print("\nScenario E (L3 annuity at 17% tax):")
-    print(f"Run-out prob: {resE['prob_runout']*100:.1f}%")
-    print(
-        f"10%: {resE['p10']:,.0f}, median: {resE['p50']:,.0f}, 90%: {resE['p90']:,.0f}, leftover pot: {resE['p50pot']:,.0f}"
-    )
-
-    # Scenario F
     scenarioF = ScenarioF()
-    resF = simulate_montecarlo(scenarioF, p)
-    print(
-        "\nScenario F (50% L3 w/5yr liquidation at 62, 50% Broker => shift eq->bd at 75):"
-    )
-    print(f"Run-out prob: {resF['prob_runout']*100:.1f}%")
-    print(
-        f"10%: {resF['p10']:,.0f}, median: {resF['p50']:,.0f}, 90%: {resF['p90']:,.0f}, leftover pot: {resF['p50pot']:,.0f}"
-    )
 
-    # Example Plots
-    # Compare a few scenarios in a box plot:
-    sorted_res = sorted(
-        [
-            (resA, "Broker Only"),
-            (resB, "Rürup + Broker"),
-            (resC, "L3 Lump Sum"),
-            (resD, "Rürup + L3 Lump Sum"),
-            (resE, "L3 Annutiy"),
-            (resF, "50% L3 50% Broker"),
-        ],
-        key=lambda t: t[0]["p50"],
-        reverse=True,
+    # Simulate
+    resA = simulate_montecarlo(scenarioA, p)
+    resB = simulate_montecarlo(scenarioB, p)
+    resC = simulate_montecarlo(scenarioC, p)
+    resD = simulate_montecarlo(scenarioD, p)
+    resE = simulate_montecarlo(scenarioE, p)
+    resF = simulate_montecarlo(scenarioF, p)
+
+    # Let's put them together
+    results_named = [
+        ("Scenario A", resA),
+        ("Scenario B", resB),
+        ("Scenario C", resC),
+        ("Scenario D", resD),
+        ("Scenario E", resE),
+        ("Scenario F", resF),
+    ]
+
+    # Sort by the 'p50pot' (median leftover pot)
+    results_sorted = sorted(results_named, key=lambda x: x[1]["p50pot"], reverse=True)
+
+    # Print & plot
+    print("Sorted by median leftover pot (p50pot):\n")
+    for name, r in results_sorted:
+        print(
+            f"{name}: p50 leftover = {r['p50pot']:.0f}, run-out = {100*r['prob_runout']:.1f}%, p50 spend = {r['p50']:,.0f}"
+        )
+
+    # Box plot (sorted by p50pot)
+    plot_boxplot(
+        [x[1] for x in results_sorted],
+        labels=[x[0] for x in results_sorted],
+        title="Scenarios Sorted by p50pot",
     )
-    plot_boxplot([e[0] for e in sorted_res], labels=[e[1] for e in sorted_res])
