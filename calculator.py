@@ -18,7 +18,7 @@ class Pot:
     l3_eq_bs: float = 0.0
 
     def leftover(self):
-        return self.br_eq + self.br_bd + self.l3_eq + self.rurup
+        return self.br_eq + self.br_bd + self.l3_eq
 
 
 @dataclass
@@ -102,14 +102,9 @@ class Scenario:
     ) -> tuple[float, Pot]:
         raise NotImplementedError
 
-    def prepare_decum(
+    def transition_year(
         self, pot: Pot, current_year: int, eq_r: float, bd_r: float
     ) -> Pot:
-        """
-        Unify init_pot into pot_scenario so that at retirement
-        we have exactly eq, eq_bs, bd, bd_bs (plus net_ann if any).
-        This avoids leftover sub-pots that never decumulate.
-        """
         pot.rurup *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
         pot.br_eq *= 1 + eq_r - self.params.fund_fee
         pot.l3_eq *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
@@ -447,13 +442,15 @@ def simulate_montecarlo(scenario: Scenario):
         for year in range(p.years_transition):
             eq_r = np.random.normal(p.equity_mean, p.equity_std)
             bd_r = np.random.normal(p.bond_mean, p.bond_std)
-            scenario.prepare_decum(sim_pot, year, eq_r, bd_r)
+            scenario.transition_year(sim_pot, year, eq_r, bd_r)
 
         net_ann = 0
         if sim_pot.rurup > 0:
             gross_ann = sim_pot.rurup * p.ruerup_ann_rate
             net_ann = gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
             sim_pot.rurup = 0
+
+        print("netann", net_ann)
 
         for t in range(T):
             eq_r = np.random.normal(p.equity_mean, p.equity_std)
