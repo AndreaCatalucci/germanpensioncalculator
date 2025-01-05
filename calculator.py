@@ -2,6 +2,32 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, replace
 from params import Params
+from dataclasses import dataclass
+
+
+@dataclass
+class Pot:
+    rurup: float = 0.0
+
+    br_eq: float = 0.0
+    br_eq_bs: float = 0.0
+    br_bd: float = 0.0
+    br_bd_bs: float = 0.0
+
+    l3_eq: float = 0.0
+    l3_eq_bs: float = 0.0
+
+    # net annuity
+    net_ann: float = 0.0
+
+    def leftover(self):
+        return self.br_eq + self.br_bd + self.l3_eq + self.rurup + self.net_ann
+
+
+@dataclass
+class Withdrawal:
+    gross_withdrawn: float
+    net_withdrawn: float
 
 
 # --------------------------------------------------------
@@ -105,101 +131,54 @@ def present_value(cf, year, discount_rate):
     return cf / ((1 + discount_rate) ** year)
 
 
-def shift_equity_to_bonds(eq, eq_bs, bd, bd_bs, fraction, cgt):
-    moved = eq * fraction
-    bs_moved = eq_bs * fraction
-    eq_after = eq - moved
-    eq_bs_after = eq_bs - bs_moved
-    gains = moved - bs_moved
-    tax_amount = gains * cgt
-    moved_net = moved - tax_amount
-    bd_after = bd + moved_net
-    bd_bs_after = bd_bs + moved_net
-    return eq_after, eq_bs_after, bd_after, bd_bs_after
-
-
-@dataclass
-class Withdrawal:
-    gross_withdrawn: float
-    net_withdrawn: float
-    eq_after: float
-    eq_bs_after: float
-    bd_after: float
-    bd_bs_after: float
-
-
-def solve_gross_for_net(eq, eq_bs, bd, bd_bs, net_needed, cg_tax) -> Withdrawal:
-    total_pot = eq + bd
+def withdraw(pot: Pot, net_needed, cg_tax) -> Withdrawal:
+    total_pot = pot.br_bd + pot.br_eq + pot.l3_eq
     if total_pot <= 0:
         return (0, 0, 0, 0, 0, 0)
 
     net_withdrawn = 0
     gross_withdrawn = 0
-    bd_after = bd
-    eq_after = eq
-    bd_bs_after = bd_bs
-    eq_bs_after = eq_bs
     still_needed = net_needed
 
     # BOND FIRST
-    if bd > 0:
-        net_bd = bd - (bd - bd_bs) * cg_tax
+    if pot.br_bd > 0:
+        net_bd = pot.br_bd - (pot.br_bd - pot.br_bd_bs) * cg_tax
         portion = min(still_needed, net_bd)
         if portion > 0:
             frac = portion / net_bd
-            gross_bd_withdrawal = frac * bd
-            bd_bs_after = bd_bs * (1 - frac)
-            bd_after = bd - gross_bd_withdrawal
+            gross_bd_withdrawal = frac * pot.br_bd
+            pot.br_bd_bs = pot.br_bd_bs * (1 - frac)
+            pot.br_bd -= gross_bd_withdrawal
             net_withdrawn += portion
             gross_withdrawn += gross_bd_withdrawal
             still_needed -= portion
 
     # EQUITY NEXT
-    if still_needed > 0 and eq_after > 0:
-        net_eq = eq_after - (eq_after - eq_bs_after) * cg_tax
+    if still_needed > 0 and pot.br_eq > 0:
+        net_eq = pot.br_eq - (pot.br_eq - pot.br_eq_bs) * cg_tax
         portion2 = min(still_needed, net_eq)
         if portion2 > 0:
             frac2 = portion2 / net_eq
-            gross_eq_withdrawal = frac2 * eq_after
-            eq_bs_after = eq_bs_after * (1 - frac2)
-            eq_after = eq_after - gross_eq_withdrawal
+            gross_eq_withdrawal = frac2 * pot.br_eq
+            pot.br_bd_bs = pot.br_eq_bs * (1 - frac2)
+            pot.br_eq -= gross_eq_withdrawal
             net_withdrawn += portion2
             gross_withdrawn += gross_eq_withdrawal
             still_needed -= portion2
 
-    return Withdrawal(
-        gross_withdrawn,
-        net_withdrawn,
-        eq_after,
-        eq_bs_after,
-        bd_after,
-        bd_bs_after,
-    )
+    return Withdrawal(gross_withdrawn, net_withdrawn)
 
 
-# --------------------------------------------------------
-# 3. POT DATACLASS
-# --------------------------------------------------------
-from dataclasses import dataclass
-
-
-@dataclass
-class Pot:
-    rurup: float = 0.0
-
-    br_eq: float = 0.0
-    br_eq_bs: float = 0.0
-    br_bd: float = 0.0
-    br_bd_bs: float = 0.0
-
-    l3_eq: float = 0.0
-    l3_eq_bs: float = 0.0
-
-    # net annuity
-    net_ann: float = 0.0
-
-    def leftover(self):
-        return self.br_eq + self.br_bd + self.l3_eq + self.rurup + self.net_ann
+def shift_equity_to_bonds(pot: Pot, fraction, cgt):
+    moved = pot.br_eq * fraction
+    bs_moved = pot.br_eq_bs * fraction
+    pot.br_eq -= moved
+    pot.br_eq_bs -= bs_moved
+    gains = moved - bs_moved
+    tax_amount = gains * cgt
+    moved_net = moved - tax_amount
+    pot.br_bd += moved_net
+    pot.br_bd_bs += moved_net
 
 
 # --------------------------------------------------------
@@ -315,11 +294,8 @@ class ScenarioA(Scenario):
     ) -> tuple[float, Pot]:
         if current_year < p.glide_path_years:
             frac = 1.0 / p.glide_path_years
-            pot.br_eq, pot.br_eq_bs, pot.br_bd, pot.br_bd_bs = shift_equity_to_bonds(
-                pot.br_eq,
-                pot.br_eq_bs,
-                pot.br_bd,
-                pot.br_bd_bs,
+            shift_equity_to_bonds(
+                pot,
                 frac,
                 p.cg_tax_normal,
             )
@@ -329,17 +305,11 @@ class ScenarioA(Scenario):
         pot.br_eq *= 1 + eq_r - p.fund_fee
         pot.br_bd *= 1 + bd_r - p.fund_fee
 
-        withdrawn = solve_gross_for_net(
-            pot.br_eq,
-            pot.br_eq_bs,
-            pot.br_bd,
-            pot.br_bd_bs,
+        withdrawn = withdraw(
+            pot,
             needed_net,
             p.cg_tax_normal,
         )
-
-        pot.br_eq, pot.br_bd = withdrawn.eq_after, withdrawn.bd_after
-        pot.br_eq_bs, pot.br_bd_bs = withdrawn.eq_bs_after, withdrawn.bd_bs_after
         return withdrawn.net_withdrawn, pot
 
 
@@ -388,23 +358,14 @@ class ScenarioB(Scenario):
 
         if current_year < p.glide_path_years:
             frac = 1.0 / p.glide_path_years
-            eq, eq_bs, bd, bd_bs = shift_equity_to_bonds(
-                eq, eq_bs, bd, bd_bs, frac, p.cg_tax_normal
-            )
+            shift_equity_to_bonds(pot, frac, p.cg_tax_normal)
 
-        eq *= 1 + rand_returns["eq"]
-        bd *= 1 + rand_returns["bd"]
+        pot.br_eq *= 1 + rand_returns["eq"]
+        pot.br_bd *= 1 + rand_returns["bd"]
 
         needed_broker = max(0, needed_net - net_ann)
-        withdrawn = solve_gross_for_net(
-            eq, eq_bs, bd, bd_bs, needed_broker, p.cg_tax_normal
-        )
+        withdrawn = withdraw(pot, needed_broker, p.cg_tax_normal)
         total_net = net_ann + withdrawn.net_withdrawn
-
-        pot.br_eq = withdrawn.eq_after
-        pot.br_bd = withdrawn.bd_after
-        pot.br_eq_bs = withdrawn.eq_bs_after
-        pot.br_bd_bs = withdrawn.bd_bs_after
         return total_net, pot
 
 
@@ -435,23 +396,16 @@ class ScenarioC(Scenario):
     ) -> tuple[float, Pot]:
         if current_year < p.glide_path_years:
             frac = 1.0 / p.glide_path_years
-            pot.br_eq, pot.br_eq_bs, pot.br_bd, pot.br_bd_bs = shift_equity_to_bonds(
-                pot.br_eq, pot.br_eq_bs, pot.br_bd, pot.br_bd_bs, frac, p.cg_tax_normal
-            )
+            shift_equity_to_bonds(pot, frac, p.cg_tax_normal)
 
         pot.br_eq *= 1 + rand_returns["eq"]
         pot.br_bd *= 1 + rand_returns["bd"]
 
-        withdrawn = solve_gross_for_net(
-            pot.br_eq,
-            pot.br_eq_bs,
-            pot.br_bd,
-            pot.br_bd_bs,
+        withdrawn = withdraw(
+            pot,
             needed_net,
             p.cg_tax_normal,
         )
-        pot.br_eq, pot.br_bd = withdrawn.eq_after, withdrawn.bd_after
-        pot.br_eq_bs, pot.br_bd_bs = withdrawn.eq_bs_after, withdrawn.bd_bs_after
         return withdrawn.net_withdrawn, pot
 
 
@@ -489,21 +443,14 @@ class ScenarioD(Scenario):
         net_ann = pot.net_ann
         if current_year < p.glide_path_years:
             frac = 1.0 / p.glide_path_years
-            pot.br_eq, pot.br_eq_bs, pot.br_bd, pot.br_bd_bs = shift_equity_to_bonds(
-                pot.br_eq, pot.br_eq_bs, pot.br_bd, pot.br_bd_bs, frac, p.cg_tax_normal
-            )
+            shift_equity_to_bonds(pot, frac, p.cg_tax_normal)
 
         pot.br_eq *= 1 + rand_returns["eq"]
         pot.br_bd *= 1 + rand_returns["bd"]
 
         needed = max(0, needed_net - net_ann)
-        withdrawn = solve_gross_for_net(
-            pot.br_eq, pot.br_eq_bs, pot.br_bd, pot.br_bd_bs, needed, p.cg_tax_normal
-        )
+        withdrawn = withdraw(pot, needed, p.cg_tax_normal)
         total_net = net_ann + withdrawn.net_withdrawn
-
-        pot.br_eq, pot.br_bd = withdrawn.eq_after, withdrawn.bd_after
-        pot.br_eq_bs, pot.br_bd_bs = withdrawn.eq_bs_after, withdrawn.bd_bs_after
         return total_net, pot
 
 
@@ -517,10 +464,9 @@ class ScenarioE(Scenario):
         br_eq, br_bd = 0.0, 0.0
         br_eq_bs, br_bd_bs = 0.0, 0.0
         c = p.annual_contribution
-        half = 0.3
+        half = 0.5
 
-        for yr in range(p.years_accum):
-            age_now = p.age_start + yr
+        for _ in range(p.years_accum):
             l3_eq *= 1 + p.equity_mean - p.fund_fee - p.pension_fee
             l3_bd *= 1 + p.bond_mean - p.fund_fee - p.pension_fee
             br_eq *= 1 + p.equity_mean - p.fund_fee
@@ -534,17 +480,8 @@ class ScenarioE(Scenario):
             br_eq_bs += c_br
             c *= 1.02
 
-            if 62 <= age_now < 67:
-                frac = 1.0 / 5.0
-                bd_before = l3_bd
-                l3_eq, l3_eq_bs, l3_bd, l3_bd_bs = shift_equity_to_bonds(
-                    l3_eq, l3_eq_bs, l3_bd, l3_bd_bs, frac, p.cg_tax_half
-                )
-                delta = l3_bd - bd_before
-                l3_bd -= delta * p.ruerup_dist_fee
-
-        pot.l3_eq, pot.l3_bd = l3_eq, l3_bd
-        pot.l3_eq_bs, pot.l3_bd_bs = l3_eq_bs, l3_bd_bs
+        pot.l3_eq = l3_eq
+        pot.l3_eq_bs = l3_eq_bs
         pot.br_eq, pot.br_bd = br_eq, br_bd
         pot.br_eq_bs, pot.br_bd_bs = br_eq_bs, br_bd_bs
         return pot
@@ -561,24 +498,17 @@ class ScenarioE(Scenario):
         age_now = p.age_retire + current_year
         if age_now >= 72 and (age_now - 72) < p.glide_path_years:
             frac = 1.0 / p.glide_path_years
-            pot.br_eq, pot.br_eq_bs, pot.br_bd, pot.br_bd_bs = shift_equity_to_bonds(
-                pot.br_eq, pot.br_eq_bs, pot.br_bd, pot.br_bd_bs, frac, p.cg_tax_normal
-            )
+            shift_equity_to_bonds(pot, frac, p.cg_tax_normal)
 
         pot.br_eq *= 1 + rand_returns["eq"]
         pot.br_bd *= 1 + rand_returns["bd"]
 
         # partial withdrawal
-        withdrawn = solve_gross_for_net(
-            pot.br_eq,
-            pot.br_eq_bs,
-            pot.br_bd,
-            pot.br_bd_bs,
+        withdrawn = withdraw(
+            pot,
             needed_net,
             p.cg_tax_normal,
         )
-        pot.br_eq, pot.br_bd = withdrawn.eq_after, withdrawn.bd_after
-        pot.br_eq_bs, pot.br_bd_bs = withdrawn.eq_bs_after, withdrawn.bd_bs_after
         return withdrawn.net_withdrawn, pot
 
 
@@ -639,7 +569,7 @@ def simulate_montecarlo(scenario: Scenario, p: Params):
 def plot_boxplot(data_list, labels):
     all_data = [d["all_spend"] for d in data_list]
     plt.figure(figsize=(7, 4))
-    plt.boxplot(all_data, labels=labels)
+    plt.boxplot(all_data, tick_labels=labels)
     plt.title("Boxplot of Discounted Spending (Sorted by leftover pot)")
     plt.ylabel("NPV of Spending")
     plt.grid(True)
