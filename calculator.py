@@ -252,7 +252,7 @@ def prepare_decum(init_pot: Pot, scenario_pot: Pot, params: Params) -> Pot:
     return final
 
 
-class ScenarioA(Scenario):
+class ScenarioBroker(Scenario):
     def accumulate(self, p: Params) -> Pot:
         pot = Pot()
         eq_val = 0.0
@@ -299,7 +299,7 @@ class ScenarioA(Scenario):
         return withdrawn.net_withdrawn, pot
 
 
-class ScenarioB(Scenario):
+class ScenarioRurupBroker(Scenario):
     """Rürup + Broker => invests refund in broker pot."""
 
     def accumulate(self, p: Params) -> Pot:
@@ -355,7 +355,7 @@ class ScenarioB(Scenario):
         return total_net, pot
 
 
-class ScenarioC(Scenario):
+class ScenarioL3(Scenario):
     """L3 lumpsum half CG => eq->bd decum."""
 
     def accumulate(self, p: Params) -> Pot:
@@ -395,7 +395,7 @@ class ScenarioC(Scenario):
         return withdrawn.net_withdrawn, pot
 
 
-class ScenarioD(Scenario):
+class ScenarioRurupL3(Scenario):
     """Rürup + L3 lumpsum => eq->bond decum."""
 
     def accumulate(self, p: Params) -> Pot:
@@ -440,7 +440,7 @@ class ScenarioD(Scenario):
         return total_net, pot
 
 
-class ScenarioE(Scenario):
+class ScenarioL3Broker(Scenario):
     """50% L3, 50% Broker => unify them at retirement so eq->bd decum."""
 
     def accumulate(self, p: Params) -> Pot:
@@ -504,9 +504,7 @@ class ScenarioE(Scenario):
 def simulate_montecarlo(scenario: Scenario, p: Params):
     init_pot = accumulate_initial_pots(p)
     scen_pot = scenario.accumulate(p)
-    print("scnepot", scen_pot.br_eq)
     final_pot = prepare_decum(init_pot, scen_pot, p)
-    print("finalpot", final_pot.br_eq)
     lifetimes = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
     results = []
     leftover_pots = []
@@ -570,11 +568,11 @@ if __name__ == "__main__":
     p = Params()
 
     # Create scenarios
-    sA = ScenarioA()
-    sB = ScenarioB()
-    sC = ScenarioC()
-    sD = ScenarioD()
-    sE = ScenarioE()
+    sA = ScenarioBroker()
+    sB = ScenarioRurupBroker()
+    sC = ScenarioL3()
+    sD = ScenarioRurupL3()
+    sE = ScenarioL3Broker()
 
     # simulate
     rA = simulate_montecarlo(sA, p)
@@ -585,11 +583,11 @@ if __name__ == "__main__":
 
     # Sort by p50pot
     combos = [
-        ("A", rA),
-        ("B", rB),
-        ("C", rC),
-        ("D", rD),
-        ("E", rE),
+        ("Broker", rA),
+        ("RurupBroker", rB),
+        ("L3", rC),
+        ("RurupL3", rD),
+        ("L3Broker", rE),
     ]
     combos_sorted = sorted(combos, key=lambda x: x[1]["p50pot"], reverse=True)
 
