@@ -1,7 +1,7 @@
 class Params:
     # Ages
-    age_start = 37
-    age_retire = 67
+    age_start = 1
+    age_retire = 1
     gender = "M"
 
     # Durations
@@ -9,7 +9,7 @@ class Params:
     glide_path_years = 10
 
     # Annual contributions
-    annual_contribution = 12_000
+    annual_contribution = 1
 
     pension_fee = 0.003
     fund_fee = 0.002
@@ -35,7 +35,7 @@ class Params:
     # Desired net annual spending at retirement
     inflation_mean = 0.02
     inflation_std = 0.01
-    desired_spend = 36_000.0 * (1.02 ** (years_accum))
+    desired_spend = 1.0 * (1.02 ** (years_accum))
 
     # Number of Monte Carlo runs
     num_sims = 50_000  # for speed in example
@@ -44,8 +44,8 @@ class Params:
     discount_rate = 0.01
 
     # Preexisting Pots
-    initial_rurup = 29_000    # Convert to an annuity at retirement
-    initial_broker = 51_000   # Follows eq->bd glide path
-    initial_broker_bs = 40_000
-    initial_l3 = 48_000
-    initial_l3_bs = 45_000
+    initial_rurup = 1    # Convert to an annuity at retirement
+    initial_broker = 1   # Follows eq->bd glide path
+    initial_broker_bs = 1
+    initial_l3 = 1
+    initial_l3_bs = 1
