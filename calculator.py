@@ -437,7 +437,6 @@ def simulate_montecarlo(scenario: Scenario):
         total_spend = 0.0
         ran_out = False
         spend = p.desired_spend
-        T = lifetimes[i]
 
         for year in range(p.years_transition):
             eq_r = np.random.normal(p.equity_mean, p.equity_std)
@@ -450,7 +449,7 @@ def simulate_montecarlo(scenario: Scenario):
             net_ann += gross_ann * (1 - p.ruerup_tax - p.ruerup_dist_fee)
             sim_pot.rurup = 0
 
-        for t in range(T):
+        for t in range(lifetimes[i]):
             eq_r = np.random.normal(p.equity_mean, p.equity_std)
             bd_r = np.random.normal(p.bond_mean, p.bond_std)
 
