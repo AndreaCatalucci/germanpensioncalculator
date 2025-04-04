@@ -1,5 +1,7 @@
 from params import Params
 from scenario_broker import ScenarioBroker
+from scenario_enhanced_broker import ScenarioEnhancedBroker
+from scenario_enhanced_l3_broker import ScenarioEnhancedL3Broker
 from scenario_l3 import ScenarioL3
 from scenario_l3_broker import ScenarioL3Broker
 from scenario_rurup_broker import ScenarioRurupBroker
@@ -8,47 +10,53 @@ from scenario_safe_retire import ScenarioSafeRetire
 from scenario_safe_spend import ScenarioSafeSpend
 from simulation import plot_boxplot, simulate_montecarlo
 
-# --------------------------------------------------------
-# MAIN
-# --------------------------------------------------------
-if __name__ == "__main__":
+
+def run_scenarios(scenario_list):
+    """
+    Run simulations for a list of scenarios and display results.
+
+    Args:
+        scenario_list: List of tuples (name, scenario_class)
+    """
     p = Params()
 
-    # Create scenarios
-    sA = ScenarioBroker(p)
-    sB = ScenarioRurupBroker(p)
-    sC = ScenarioL3(p)
-    sD = ScenarioRurupL3(p)
-    sE = ScenarioL3Broker(p)
-    sF = ScenarioSafeSpend(p)  # Optimized for spending
-    sG = ScenarioSafeRetire(p)  # Optimized for safety
+    # Create scenario instances and run simulations
+    results = []
+    for name, scenario_class in scenario_list:
+        scenario = scenario_class(p)
+        result = simulate_montecarlo(scenario)
+        results.append((name, result))
 
-    # simulate
-    rA = simulate_montecarlo(sA)
-    rB = simulate_montecarlo(sB)
-    rC = simulate_montecarlo(sC)
-    rD = simulate_montecarlo(sD)
-    rE = simulate_montecarlo(sE)
-    rF = simulate_montecarlo(sF)  # Simulate SafeSpend
-    rG = simulate_montecarlo(sG)  # Simulate SafeRetire
+    # Sort by p50pot (median leftover pot)
+    results_sorted = sorted(results, key=lambda x: x[1]["p50pot"], reverse=True)
 
-    # Sort by p50pot
-    combos = [
-        ("Broker", rA),
-        ("RurupBroker", rB),
-        ("L3", rC),
-        ("RurupL3", rD),
-        ("L3Broker", rE),
-        ("SafeSpend", rF),
-        ("SafeRetire", rG),
-    ]
-    combos_sorted = sorted(combos, key=lambda x: x[1]["p50pot"], reverse=True)
-
-    for name, res in combos_sorted:
+    # Print results
+    for name, res in results_sorted:
         print(
             f"Scenario {name}: leftover p50={res['p50pot']:.0f}, run-out={res['prob_runout'] * 100:.1f}%, "
             f"p50 spend={res['p50']:,.0f}"
         )
 
-    # box plot
-    plot_boxplot([c[1] for c in combos_sorted], [c[0] for c in combos_sorted])
+    # Generate boxplot
+    plot_boxplot([r[1] for r in results_sorted], [r[0] for r in results_sorted])
+
+
+# --------------------------------------------------------
+# MAIN
+# --------------------------------------------------------
+if __name__ == "__main__":
+    # Define scenarios to run
+    scenarios = [
+        ("Broker", ScenarioBroker),
+        ("RurupBroker", ScenarioRurupBroker),
+        # ("L3", ScenarioL3),
+        # ("RurupL3", ScenarioRurupL3),
+        ("L3Broker", ScenarioL3Broker),
+        # ("SafeSpend", ScenarioSafeSpend),
+        # ("SafeRetire", ScenarioSafeRetire),
+        ("EnhancedBroker", ScenarioEnhancedBroker),
+        ("EnhancedL3Broker", ScenarioEnhancedL3Broker),
+    ]
+
+    # Run scenarios
+    run_scenarios(scenarios)
