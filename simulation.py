@@ -1,6 +1,7 @@
 from dataclasses import replace
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 from historical_returns import get_bond_returns, get_equity_returns
 from scenario_base import Pot, present_value
 
@@ -111,8 +112,7 @@ def simulate_montecarlo(scenario):
 
     # Load historical returns data
     equity_returns = get_equity_returns(
-        series_id=p.equity_series_id,
-        start_year=p.data_start_year,
+        series_id=p.equity_series_id, start_year=p.data_start_year
     )
     bond_returns = get_bond_returns(
         series_id=p.bond_series_id, start_year=p.data_start_year
@@ -141,10 +141,10 @@ def simulate_montecarlo(scenario):
         br_bd=init_pot.br_bd + scen_pot.br_bd,
         br_bd_bs=init_pot.br_bd_bs + scen_pot.br_bd_bs,
     )
-    
+
     # Import here to avoid circular imports
     from lifetime import sample_lifetime_from67
-    
+
     lifetimes = sample_lifetime_from67(p.gender, p.num_sims) - p.age_retire
     results = []
     leftover_pots = []

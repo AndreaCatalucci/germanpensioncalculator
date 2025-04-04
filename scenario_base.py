@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class Pot:
     rurup: float = 0.0

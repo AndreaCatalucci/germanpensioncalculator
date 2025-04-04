@@ -17,7 +17,7 @@ class Params:
     fund_fee = 0.002
 
     # Historical data parameters
-    
+
     # Bootstrapping parameters
     bootstrap_period_length = 5  # Length of historical periods to sample
 
