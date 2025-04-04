@@ -169,3 +169,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+equity_returns.pkl
+bond_returns.pkl
