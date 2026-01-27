@@ -1,10 +1,16 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+import numpy as np
 from scenario_base import Pot, Scenario, shift_equity_to_bonds, withdraw
+
+if TYPE_CHECKING:
+    from params import Params
 
 
 class ScenarioEnhancedL3Broker(Scenario):
     """Enhanced L3Broker strategy combining L3 tax advantages with optimized withdrawal."""
 
-    def __init__(self, p):
+    def __init__(self, p: Params) -> None:
         super().__init__(p)
         # Strategy parameters
         self.proportion_l3 = 0.4  # 40% to L3, 60% to Broker
@@ -17,7 +23,7 @@ class ScenarioEnhancedL3Broker(Scenario):
         self.market_sensitivity = 0.15  # Adjust withdrawals by up to 15% based on market
         self.safety_buffer = 0.05  # 5% safety buffer
 
-    def accumulate(self, eq_returns=None, bd_returns=None) -> Pot:
+    def accumulate(self, eq_returns: np.ndarray | None = None, bd_returns: np.ndarray | None = None) -> Pot:
         pot = Pot()
         l3_eq = 0.0
         l3_eq_bs = 0.0
@@ -82,7 +88,7 @@ class ScenarioEnhancedL3Broker(Scenario):
         current_year: int,
         net_ann: float,
         needed_net: float,
-        rand_returns: dict,
+        rand_returns: dict[str, float],
     ) -> tuple[float, Pot]:
         # Calculate current age
         age_now = self.params.age_retire + current_year

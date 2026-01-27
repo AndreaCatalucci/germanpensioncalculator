@@ -1,10 +1,16 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+import numpy as np
 from scenario_base import Pot, Scenario, shift_equity_to_bonds, withdraw
+
+if TYPE_CHECKING:
+    pass
 
 
 class ScenarioL3Broker(Scenario):
     """50% L3, 50% Broker => unify them at retirement so eq->bd decum."""
 
-    def accumulate(self, eq_returns=None, bd_returns=None) -> Pot:
+    def accumulate(self, eq_returns: np.ndarray | None = None, bd_returns: np.ndarray | None = None) -> Pot:
         pot = Pot()
         l3_eq = 0.0
         l3_eq_bs = 0.0
@@ -54,15 +60,15 @@ class ScenarioL3Broker(Scenario):
         current_year: int,
         net_ann: float,
         needed_net: float,
-        rand_returns: dict,
+        rand_returns: dict[str, float],
     ) -> tuple[float, Pot]:
         age_now = self.params.age_retire + current_year
         if age_now >= 70 and (age_now - 70) < self.params.glide_path_years:
             frac = 1.0 / self.params.glide_path_years
             shift_equity_to_bonds(pot, frac, self.params.cg_tax_normal)
 
-        pot.br_eq *= 1 + rand_returns["eq"]
-        pot.br_bd *= 1 + rand_returns["bd"]
+        pot.br_eq *= 1 + rand_returns["eq"] - self.params.fund_fee
+        pot.br_bd *= 1 + rand_returns["bd"] - self.params.fund_fee
 
         # partial withdrawal
         withdrawn = withdraw(

@@ -1,17 +1,18 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, List, Tuple, Type
 from params import Params
 from scenario_broker import ScenarioBroker
 from scenario_enhanced_broker import ScenarioEnhancedBroker
 from scenario_enhanced_l3_broker import ScenarioEnhancedL3Broker
-from scenario_l3 import ScenarioL3
 from scenario_l3_broker import ScenarioL3Broker
 from scenario_rurup_broker import ScenarioRurupBroker
-from scenario_rurup_l3 import ScenarioRurupL3
-from scenario_safe_retire import ScenarioSafeRetire
-from scenario_safe_spend import ScenarioSafeSpend
 from simulation import plot_boxplot, simulate_montecarlo
 
+if TYPE_CHECKING:
+    from scenario_base import Scenario
 
-def run_scenarios(scenario_list):
+
+def run_scenarios(scenario_list: List[Tuple[str, Type[Scenario]]]) -> None:
     """
     Run simulations for a list of scenarios and display results.
 
@@ -46,7 +47,7 @@ def run_scenarios(scenario_list):
 # --------------------------------------------------------
 if __name__ == "__main__":
     # Define scenarios to run
-    scenarios = [
+    scenarios: List[Tuple[str, Type[Scenario]]] = [
         ("Broker", ScenarioBroker),
         ("RurupBroker", ScenarioRurupBroker),
         # ("L3", ScenarioL3),

@@ -1,10 +1,16 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+import numpy as np
 from scenario_base import Pot, Scenario, shift_equity_to_bonds, withdraw
+
+if TYPE_CHECKING:
+    from params import Params
 
 
 class ScenarioEnhancedBroker(Scenario):
     """Enhanced Broker strategy optimized for 0% run-out and maximum spending."""
 
-    def __init__(self, p):
+    def __init__(self, p: Params) -> None:
         super().__init__(p)
         # Strategy parameters
         self.early_shift_years = 5  # Start shifting to bonds 5 years before retirement
@@ -16,7 +22,7 @@ class ScenarioEnhancedBroker(Scenario):
         self.market_sensitivity = 0.15  # Adjust withdrawals by up to 15% based on market
         self.safety_buffer = 0.05  # 5% safety buffer
 
-    def accumulate(self, eq_returns=None, bd_returns=None) -> Pot:
+    def accumulate(self, eq_returns: np.ndarray | None = None, bd_returns: np.ndarray | None = None) -> Pot:
         pot = Pot()
         eq_val = 0.0
         bd_val = 0.0
@@ -74,7 +80,7 @@ class ScenarioEnhancedBroker(Scenario):
         current_year: int,
         net_ann: float,
         needed_net: float,
-        rand_returns: dict,
+        rand_returns: dict[str, float],
     ) -> tuple[float, Pot]:
         # Calculate current age
         age_now = self.params.age_retire + current_year

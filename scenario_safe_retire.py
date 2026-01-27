@@ -1,10 +1,16 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+import numpy as np
 from scenario_base import Pot, Scenario, shift_equity_to_bonds, withdraw
+
+if TYPE_CHECKING:
+    from params import Params
 
 
 class ScenarioSafeRetire(Scenario):
     """Strategy optimized for minimizing run-out risk with a focus on safety."""
 
-    def __init__(self, p):
+    def __init__(self, p: Params) -> None:
         super().__init__(p)
         # More conservative parameters
         self.glide_path_years = 10  # Even shorter glide path (more conservative)
@@ -21,7 +27,7 @@ class ScenarioSafeRetire(Scenario):
         )
         self.safety_buffer = 0.1  # Keep 10% of portfolio as safety buffer
 
-    def accumulate(self, eq_returns=None, bd_returns=None) -> Pot:
+    def accumulate(self, eq_returns: np.ndarray | None = None, bd_returns: np.ndarray | None = None) -> Pot:
         pot = Pot()
         l3_eq = 0.0
         l3_eq_bs = 0.0
@@ -90,7 +96,7 @@ class ScenarioSafeRetire(Scenario):
         current_year: int,
         net_ann: float,
         needed_net: float,
-        rand_returns: dict,
+        rand_returns: dict[str, float],
     ) -> tuple[float, Pot]:
         # More aggressive shift to bonds in early retirement
         if current_year < self.glide_path_years:

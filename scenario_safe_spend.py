@@ -1,10 +1,16 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+import numpy as np
 from scenario_base import Pot, Scenario, shift_equity_to_bonds, withdraw
+
+if TYPE_CHECKING:
+    from params import Params
 
 
 class ScenarioSafeSpend(Scenario):
     """Hybrid strategy optimized for minimizing run-out risk while maximizing spending."""
 
-    def __init__(self, p):
+    def __init__(self, p: Params) -> None:
         super().__init__(p)
         # Adjust the glide path to be more conservative
         self.glide_path_years = 15  # Shorter glide path (more conservative)
@@ -18,7 +24,7 @@ class ScenarioSafeSpend(Scenario):
             0.5  # How much to adjust based on market performance (0-1)
         )
 
-    def accumulate(self, eq_returns=None, bd_returns=None) -> Pot:
+    def accumulate(self, eq_returns: np.ndarray | None = None, bd_returns: np.ndarray | None = None) -> Pot:
         pot = Pot()
         l3_eq = 0.0
         l3_eq_bs = 0.0
@@ -33,8 +39,8 @@ class ScenarioSafeSpend(Scenario):
             # Use bootstrapped returns
             if eq_returns is None or bd_returns is None:
                 raise ValueError("Bootstrapped returns are required")
-            eq_r = eq_returns[year]
-            bd_r = bd_returns[year]
+            eq_r = float(eq_returns[year])
+            bd_r = float(bd_returns[year])
 
             # Increase bond allocation in the last few years before transition
             if year >= self.params.years_accum - self.early_shift_years:
@@ -68,8 +74,8 @@ class ScenarioSafeSpend(Scenario):
         # Final year growth
         if eq_returns is None or len(eq_returns) <= self.params.years_accum or bd_returns is None or len(bd_returns) <= self.params.years_accum:
             raise ValueError("Bootstrapped returns are required for final year")
-        final_eq_r = eq_returns[self.params.years_accum]
-        final_bd_r = bd_returns[self.params.years_accum]
+        final_eq_r = float(eq_returns[self.params.years_accum])
+        final_bd_r = float(bd_returns[self.params.years_accum])
 
         l3_eq *= 1 + final_eq_r - self.params.fund_fee - self.params.pension_fee
         br_eq *= 1 + final_eq_r - self.params.fund_fee
@@ -87,7 +93,7 @@ class ScenarioSafeSpend(Scenario):
         current_year: int,
         net_ann: float,
         needed_net: float,
-        rand_returns: dict,
+        rand_returns: dict[str, float],
     ) -> tuple[float, Pot]:
         # More aggressive shift to bonds in early retirement
         if current_year < self.glide_path_years:

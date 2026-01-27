@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 import numpy as np
 
 # --------------------------------------------------------
@@ -104,7 +106,7 @@ FEMALE_QX = np.array([
 MORTALITY_IMPROVEMENT = 0.01  # 1% annual improvement
 
 
-def get_survival_probabilities(qx):
+def get_survival_probabilities(qx: np.ndarray) -> np.ndarray:
     """
     Convert probabilities of death (qx) to survival probabilities.
 
@@ -124,7 +126,7 @@ def get_survival_probabilities(qx):
     return np.concatenate(([1.0], survival_probs[:-1]))
 
 
-def adjust_for_cohort(qx, birth_year, reference_year=1955):
+def adjust_for_cohort(qx: np.ndarray, birth_year: int, reference_year: int = 1955) -> np.ndarray:
     """
     Adjust mortality rates for cohort effects.
 
@@ -137,20 +139,25 @@ def adjust_for_cohort(qx, birth_year, reference_year=1955):
         Adjusted array of death probabilities
     """
     # Calculate years of improvement
-    years_of_improvement = (
-        birth_year - reference_year
-    )  # Corrected: newer birth years should have lower mortality
+    years_of_improvement = birth_year - reference_year
 
-    # Apply compound improvement
+    # FIXED: Apply compound improvement correctly (positive years should reduce mortality)
     improvement_factor = (1 - MORTALITY_IMPROVEMENT) ** years_of_improvement
 
-    # Adjust qx (cap the improvement to avoid unrealistically low mortality)
-    adjusted_qx = np.maximum(qx * improvement_factor, qx * 0.5)
+    # FIXED: Remove arbitrary 50% mortality reduction cap - let natural improvement work
+    adjusted_qx = qx * improvement_factor
+    
+    # Ensure mortality rates don't go negative or exceed 1
+    adjusted_qx = np.clip(adjusted_qx, 0.0001, 1.0)
 
     return adjusted_qx
 
 
-def sample_lifetime_from67(gender="M", size=10_000, birth_year=None):
+def sample_lifetime_from67(
+    gender: str = "M", 
+    size: int = 10_000, 
+    birth_year: Optional[int] = None
+) -> np.ndarray:
     """
     Sample random lifetimes starting from age 67.
 
@@ -175,13 +182,12 @@ def sample_lifetime_from67(gender="M", size=10_000, birth_year=None):
     # Calculate survival probabilities
     survival_probs = get_survival_probabilities(qx)
 
-    # Calculate PDF from the survival curve (probability of dying at each exact age)
+    # FIXED: Calculate PDF from the survival curve correctly
     pdf = np.zeros_like(survival_probs)
-    pdf[0] = survival_probs[0] * qx[0]  # Probability of dying at exactly age 67
+    pdf[0] = qx[0]  # Probability of dying at exactly age 67
     for i in range(1, len(pdf)):
-        pdf[i] = (
-            survival_probs[i] * qx[i]
-        )  # Probability of surviving to age i and then dying
+        # Probability of surviving to age i and then dying in that year
+        pdf[i] = survival_probs[i-1] * qx[i]
 
     # Normalize PDF
     pdf = pdf / pdf.sum()
@@ -190,7 +196,7 @@ def sample_lifetime_from67(gender="M", size=10_000, birth_year=None):
     return np.random.choice(AGES, p=pdf, size=size)
 
 
-def get_life_expectancy(gender="M", birth_year=None):
+def get_life_expectancy(gender: str = "M", birth_year: Optional[int] = None) -> float:
     """
     Calculate life expectancy at age 67.
 

@@ -1,8 +1,10 @@
-from scenario_base import Pot, Scenario, shift_equity_to_bonds, withdraw
+from __future__ import annotations
+import numpy as np
+from scenario_base import Pot, Scenario, shift_equity_to_bonds, withdraw, safe_multiply
 
 
 class ScenarioBroker(Scenario):
-    def accumulate(self, eq_returns=None, bd_returns=None) -> Pot:
+    def accumulate(self, eq_returns: np.ndarray | None = None, bd_returns: np.ndarray | None = None) -> Pot:
         pot = Pot()
         eq_val = 0.0
         bs_val = 0.0
@@ -33,7 +35,7 @@ class ScenarioBroker(Scenario):
         current_year: int,
         net_ann: float,
         needed_net: float,
-        rand_returns: dict,
+        rand_returns: dict[str, float],
     ) -> tuple[float, Pot]:
         if current_year < self.params.glide_path_years:
             frac = 1.0 / self.params.glide_path_years
@@ -41,8 +43,8 @@ class ScenarioBroker(Scenario):
 
         eq_r = rand_returns["eq"]
         bd_r = rand_returns["bd"]
-        pot.br_eq *= 1 + eq_r - self.params.fund_fee
-        pot.br_bd *= 1 + bd_r - self.params.fund_fee
+        pot.br_eq = safe_multiply(pot.br_eq, 1 + eq_r - self.params.fund_fee)
+        pot.br_bd = safe_multiply(pot.br_bd, 1 + bd_r - self.params.fund_fee)
 
         withdrawn = withdraw(
             pot, max(0, needed_net - net_ann), self.params.cg_tax_normal
