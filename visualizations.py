@@ -56,20 +56,76 @@ class VisualizationData:
     
 class RetirementVisualizer:
     """Main visualization class for German retirement planning system"""
-    
+
+    # Success probability thresholds for consistent rating
+    SUCCESS_EXCELLENT_THRESHOLD = 90  # %
+    SUCCESS_GOOD_THRESHOLD = 75  # %
+
     def __init__(self, params: Params) -> None:
         self.params = params
         self.fig_size: Tuple[int, int] = (12, 8)
         self.dpi: int = 100
-        
+
     def format_currency(self, amount: float, suffix: str = "€") -> str:
-        """Format currency in German style"""
+        """Format currency in German style with NaN/Inf handling"""
+        import math
+        if not math.isfinite(amount):
+            return "N/A"
         if abs(amount) >= 1_000_000:
             return f"{amount/1_000_000:.1f}M {suffix}"
         elif abs(amount) >= 1_000:
             return f"{amount/1_000:.0f}K {suffix}"
         else:
             return f"{amount:,.0f} {suffix}"
+
+    def _validate_scenarios_data(self, scenarios_data: List[VisualizationData], method_name: str) -> None:
+        """Validate scenarios_data is non-empty"""
+        if not scenarios_data:
+            raise ValueError(f"{method_name}: scenarios_data cannot be empty")
+
+    def _get_success_color(self, success_rate: float) -> str:
+        """Return color based on success rate threshold"""
+        if success_rate >= self.SUCCESS_EXCELLENT_THRESHOLD:
+            return COLORS['success']
+        elif success_rate >= self.SUCCESS_GOOD_THRESHOLD:
+            return COLORS['neutral']
+        else:
+            return COLORS['failure']
+
+    def _get_success_rating(self, success_prob: float) -> str:
+        """Return German rating text for success probability"""
+        if success_prob >= self.SUCCESS_EXCELLENT_THRESHOLD:
+            return "Ausgezeichnet"
+        elif success_prob >= self.SUCCESS_GOOD_THRESHOLD:
+            return "Gut"
+        else:
+            return "Riskant"
+
+    def _extract_trajectory_data(self, result: Dict[str, Any]) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+        """Extract and normalize trajectory data (ages, p10, p50, p90) from SimulationResult.
+
+        Returns None if trajectories are not available or empty.
+        """
+        if not all(k in result for k in ['p10_trajectory', 'median_trajectory', 'p90_trajectory']):
+            return None
+
+        p10_traj = result['p10_trajectory']
+        p50_traj = result['median_trajectory']
+        p90_traj = result['p90_trajectory']
+
+        if not p10_traj or not p50_traj or not p90_traj:
+            return None
+
+        ages = np.arange(self.params.age_retire, self.params.age_retire + len(p50_traj))
+        p10_vals = np.array([pot.leftover() for pot in p10_traj])
+        p50_vals = np.array([pot.leftover() for pot in p50_traj])
+        p90_vals = np.array([pot.leftover() for pot in p90_traj])
+
+        min_len = min(len(ages), len(p10_vals), len(p50_vals), len(p90_vals))
+        if min_len == 0:
+            return None
+
+        return ages[:min_len], p10_vals[:min_len], p50_vals[:min_len], p90_vals[:min_len]
     
     def create_portfolio_growth_chart(self, scenarios_data: List[VisualizationData]) -> plt.Figure:
         """
@@ -519,7 +575,288 @@ EMPFEHLUNGEN:
         plt.suptitle("Entscheidungsunterstützung Dashboard", fontsize=16, fontweight='bold')
         plt.tight_layout()
         return fig
-    
+
+    # =========================================================================
+    # NEW SIMPLIFIED CHARTS (5 focused visualizations)
+    # =========================================================================
+
+    def create_probability_bands_chart(self, scenarios_data: List[VisualizationData]) -> plt.Figure:
+        """
+        Graph 1: Remaining portfolio value with P10/P50/P90 probability bands over retirement years.
+        Shows trajectory of wealth depletion with confidence intervals.
+        """
+        self._validate_scenarios_data(scenarios_data, "create_probability_bands_chart")
+
+        n_scenarios = len(scenarios_data)
+        fig, axes = plt.subplots(1, n_scenarios, figsize=(6*n_scenarios, 6), squeeze=False)
+
+        for idx, data in enumerate(scenarios_data):
+            ax = axes[0, idx]
+            res = data.scenario_results
+
+            # Use helper to extract trajectory data
+            traj_data = self._extract_trajectory_data(res)
+            if traj_data is not None:
+                ages, p10_vals, p50_vals, p90_vals = traj_data
+
+                # Plot probability bands
+                ax.fill_between(ages, p10_vals, p90_vals,
+                               color=COLORS['total'], alpha=0.2, label='80% Konfidenzbereich')
+                ax.plot(ages, p50_vals, color=COLORS['total'], linewidth=3, label='Median (P50)')
+                ax.plot(ages, p10_vals, color=COLORS['failure'], linewidth=1.5,
+                       linestyle='--', label='Pessimistisch (P10)')
+                ax.plot(ages, p90_vals, color=COLORS['success'], linewidth=1.5,
+                       linestyle='--', label='Optimistisch (P90)')
+
+                ax.axhline(y=0, color='red', linestyle=':', linewidth=2, alpha=0.5)
+            else:
+                ax.text(0.5, 0.5, 'Keine Trajektorien verfügbar',
+                       ha='center', va='center', transform=ax.transAxes)
+
+            ax.set_xlabel("Alter (Jahre)", fontsize=11)
+            ax.set_ylabel("Verbleibendes Vermögen", fontsize=11)
+            ax.set_title(f"{data.scenario_name}", fontweight='bold', fontsize=12)
+            ax.legend(loc='upper right', fontsize=9)
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self.format_currency(x)))
+            ax.grid(True, alpha=0.3)
+
+        fig.suptitle("Vermögensverlauf mit Wahrscheinlichkeitsbändern (P10/P50/P90)",
+                    fontsize=14, fontweight='bold', y=1.02)
+        plt.tight_layout()
+        return fig
+
+    def create_success_comparison_chart(self, scenarios_data: List[VisualizationData]) -> plt.Figure:
+        """
+        Graph 2: Success probability comparison (bar chart showing probability of not running out).
+        Simple, clear visualization of scenario reliability.
+        """
+        self._validate_scenarios_data(scenarios_data, "create_success_comparison_chart")
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        scenario_names = [d.scenario_name for d in scenarios_data]
+        success_probs = [(1 - d.scenario_results['prob_runout']) * 100 for d in scenarios_data]
+
+        # Color bars based on success threshold
+        colors = [COLORS['success'] if p >= 90 else COLORS['neutral'] if p >= 75 else COLORS['failure']
+                  for p in success_probs]
+
+        bars = ax.bar(scenario_names, success_probs, color=colors, alpha=0.8,
+                     edgecolor='black', linewidth=1.5)
+
+        # Add percentage labels on bars
+        for bar, prob in zip(bars, success_probs):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2, height + 1,
+                   f'{prob:.1f}%', ha='center', va='bottom', fontsize=12, fontweight='bold')
+
+        # Add threshold lines
+        ax.axhline(y=90, color='green', linestyle='--', linewidth=2, alpha=0.7,
+                  label='Ausgezeichnet (>=90%)')
+        ax.axhline(y=75, color='orange', linestyle='--', linewidth=2, alpha=0.7,
+                  label='Akzeptabel (>=75%)')
+
+        ax.set_ylabel("Erfolgswahrscheinlichkeit (%)", fontsize=12, fontweight='bold')
+        ax.set_title("Wahrscheinlichkeit ausreichender Mittel bis Lebensende",
+                    fontsize=14, fontweight='bold', pad=20)
+        ax.set_ylim(0, 105)
+        ax.legend(loc='lower right', fontsize=10)
+        ax.grid(axis='y', alpha=0.3)
+
+        plt.tight_layout()
+        return fig
+
+    def create_income_composition_chart(self, scenarios_data: List[VisualizationData]) -> plt.Figure:
+        """
+        Graph 3: Income composition (stacked area showing pension/rurup/broker over retirement time).
+        Simplified visualization of income sources over time.
+        """
+        self._validate_scenarios_data(scenarios_data, "create_income_composition_chart")
+
+        n_scenarios = len(scenarios_data)
+        fig, axes = plt.subplots(n_scenarios, 1, figsize=(14, 5*n_scenarios), squeeze=False)
+
+        for idx, data in enumerate(scenarios_data):
+            ax = axes[idx, 0]
+            res = data.scenario_results
+
+            if 'p50_income_split' in res:
+                split = res['p50_income_split']
+
+                # Validate all arrays have same length
+                pension_len = len(split['pension'])
+                rurup_len = len(split['rurup'])
+                broker_len = len(split['broker_net'])
+
+                if not (pension_len == rurup_len == broker_len) or pension_len == 0:
+                    ax.text(0.5, 0.5, f"Inkonsistente Einkommensdaten für {data.scenario_name}",
+                           ha='center', va='center', transform=ax.transAxes, fontsize=12)
+                    continue
+
+                years = np.arange(pension_len)
+                ages = years + self.params.age_retire
+
+                # Create stacked area plot
+                ax.stackplot(ages,
+                            split['pension'],
+                            split['rurup'],
+                            split['broker_net'],
+                            labels=['Gesetzliche Rente', 'Rürup-Rente', 'Broker-Entnahmen'],
+                            colors=[COLORS['total'], COLORS['rurup'], COLORS['broker']],
+                            alpha=0.85)
+
+                # Add total income line on top
+                total_income = split['pension'] + split['rurup'] + split['broker_net']
+                ax.plot(ages, total_income, color='black', linewidth=2.5,
+                       linestyle='-', label='Gesamteinkommen', alpha=0.8)
+
+                ax.set_xlabel("Alter (Jahre)", fontsize=11)
+                ax.set_ylabel("Jährliches Einkommen", fontsize=11)
+                ax.set_title(f"{data.scenario_name}: Einkommenszusammensetzung im Ruhestand",
+                            fontweight='bold', fontsize=12)
+                ax.legend(loc='upper right', fontsize=9)
+                ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self.format_currency(x)))
+                ax.grid(True, alpha=0.3)
+            else:
+                ax.text(0.5, 0.5, f"Keine Einkommensdaten für {data.scenario_name}",
+                       ha='center', va='center', transform=ax.transAxes, fontsize=12)
+
+        fig.suptitle("Zusammensetzung des Ruhestandseinkommens",
+                    fontsize=14, fontweight='bold', y=1.01)
+        plt.tight_layout()
+        return fig
+
+    def create_metrics_table_chart(self, scenarios_data: List[VisualizationData]) -> plt.Figure:
+        """
+        Graph 4: Scenario comparison summary with key metrics side-by-side.
+        Table-style visualization for easy comparison.
+        """
+        self._validate_scenarios_data(scenarios_data, "create_metrics_table_chart")
+
+        fig, ax = plt.subplots(figsize=(14, 4 + len(scenarios_data)))
+        ax.axis('off')
+
+        # Prepare data for table
+        headers = ['Szenario', 'Median\nAusgaben', 'Verbleibendes\nVermögen', 'Erfolgs-\nwahrsch.',
+                   'P10\nAusgaben', 'P90\nAusgaben', 'Bewertung']
+
+        table_data = []
+        for data in scenarios_data:
+            res = data.scenario_results
+
+            median_spend = self.format_currency(res['p50'])
+            median_pot = self.format_currency(res['p50pot'])
+            success_prob = f"{(1 - res['prob_runout']) * 100:.1f}%"
+            p10_spend = self.format_currency(res['p10'])
+            p90_spend = self.format_currency(res['p90'])
+
+            # Use helper for consistent rating
+            prob = (1 - res['prob_runout']) * 100
+            rating = self._get_success_rating(prob)
+
+            table_data.append([
+                data.scenario_name,
+                median_spend,
+                median_pot,
+                success_prob,
+                p10_spend,
+                p90_spend,
+                rating
+            ])
+
+        # Create table
+        table = ax.table(cellText=table_data, colLabels=headers,
+                        cellLoc='center', loc='center',
+                        bbox=[0.05, 0.1, 0.9, 0.8])
+
+        table.auto_set_font_size(False)
+        table.set_fontsize(11)
+        table.scale(1, 2.5)
+
+        # Style header row
+        for i in range(len(headers)):
+            cell = table[(0, i)]
+            cell.set_facecolor(COLORS['total'])
+            cell.set_text_props(weight='bold', color='white')
+
+        # Color rows alternately and rating column
+        for i, row in enumerate(table_data):
+            row_color = '#f0f0f0' if i % 2 == 0 else 'white'
+            for j in range(len(headers)):
+                cell = table[(i + 1, j)]
+                if j == len(headers) - 1:  # Rating column
+                    if row[j] == "Ausgezeichnet":
+                        cell.set_facecolor('#90EE90')  # Light green
+                    elif row[j] == "Riskant":
+                        cell.set_facecolor('#FFB6C1')  # Light red
+                    else:
+                        cell.set_facecolor('#FFFACD')  # Light yellow
+                else:
+                    cell.set_facecolor(row_color)
+
+        ax.set_title("Szenario-Vergleich: Wichtigste Kennzahlen",
+                    fontsize=14, fontweight='bold', pad=20, y=0.95)
+
+        return fig
+
+    def create_risk_return_scatter_chart(self, scenarios_data: List[VisualizationData]) -> plt.Figure:
+        """
+        Graph 5: Risk-return tradeoff (scatter plot).
+        Shows optimal frontier of scenario choices.
+        """
+        self._validate_scenarios_data(scenarios_data, "create_risk_return_scatter_chart")
+
+        fig, ax = plt.subplots(figsize=(10, 8))
+
+        # Extract metrics
+        scenario_names = [d.scenario_name for d in scenarios_data]
+        risks = [d.scenario_results['prob_runout'] * 100 for d in scenarios_data]
+        returns = [d.scenario_results['p50'] for d in scenarios_data]
+
+        # Generate colors dynamically to handle any number of scenarios
+        base_colors = [COLORS['broker'], COLORS['rurup'], COLORS['l3'], COLORS['total'], COLORS['equity']]
+        scenario_colors = [base_colors[i % len(base_colors)] for i in range(len(scenarios_data))]
+
+        # Create scatter plot
+        for i, (risk, ret, name) in enumerate(zip(risks, returns, scenario_names)):
+            color = scenario_colors[i]
+            ax.scatter(risk, ret, s=400, c=color, alpha=0.7,
+                      edgecolors='black', linewidth=2, zorder=3, label=name)
+
+            # Add labels
+            ax.annotate(name, (risk, ret),
+                       xytext=(15, 15), textcoords='offset points',
+                       fontsize=11, fontweight='bold',
+                       bbox=dict(boxstyle="round,pad=0.5", facecolor=color, alpha=0.3),
+                       arrowprops=dict(arrowstyle='->', color='gray', alpha=0.5))
+
+        # Add quadrant lines
+        if len(risks) > 1:
+            median_risk = np.median(risks)
+            median_return = np.median(returns)
+            ax.axvline(x=median_risk, color='gray', linestyle='--', alpha=0.5, linewidth=1.5)
+            ax.axhline(y=median_return, color='gray', linestyle='--', alpha=0.5, linewidth=1.5)
+
+        # Add quadrant labels (German grammar: adjectives need correct endings)
+        ax.text(0.02, 0.98, 'IDEAL\n(Niedriges Risiko,\nHohe Rendite)',
+               transform=ax.transAxes, fontsize=10, verticalalignment='top',
+               bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5))
+
+        ax.text(0.98, 0.02, 'VERMEIDEN\n(Hohes Risiko,\nNiedrige Rendite)',
+               transform=ax.transAxes, fontsize=10, horizontalalignment='right',
+               bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.5))
+
+        ax.set_xlabel("Ausfallrisiko (%)", fontsize=12, fontweight='bold')
+        ax.set_ylabel("Erwartete Ausgaben (Median NPV)", fontsize=12, fontweight='bold')
+        ax.set_title("Risiko-Rendite-Profil der Szenarien",
+                    fontsize=14, fontweight='bold', pad=20)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: self.format_currency(x)))
+        ax.grid(True, alpha=0.3, zorder=0)
+        ax.legend(loc='upper right', fontsize=10)
+
+        plt.tight_layout()
+        return fig
+
     def _simulate_portfolio_trajectory(self, data: VisualizationData) -> List[Pot]:
         """Simulate portfolio growth trajectory for visualization"""
         trajectory = []

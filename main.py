@@ -23,10 +23,9 @@ import numpy as np
 # Import system components
 from params import Params
 from simulation import simulate_montecarlo, SimulationResult
+# Core scenarios (simplified to 3 best strategies)
 from scenario_broker import ScenarioBroker
 from scenario_rurup_broker import ScenarioRurupBroker
-from scenario_l3_broker import ScenarioL3Broker
-from scenario_enhanced_broker import ScenarioEnhancedBroker
 from scenario_enhanced_l3_broker import ScenarioEnhancedL3Broker
 from visualizations import VisualizationData, RetirementVisualizer
 
@@ -81,12 +80,11 @@ class RetirementAnalyzer:
             print("\n🎯 Richte Szenarien ein...")
             
             assert self.params is not None
+            # Simplified to 3 best strategies covering all retirement pillars
             self.scenarios = [
-                ("Broker", ScenarioBroker(self.params), "Reines Broker-Depot"),
-                ("EnhancedBroker", ScenarioEnhancedBroker(self.params), "Optimiertes Broker-Depot (Dynamic WD)"),
-                ("RurupBroker", ScenarioRurupBroker(self.params), "Rürup + Broker (Refund investiert)"),
-                ("L3Broker", ScenarioL3Broker(self.params), "Schicht 3 + Broker (40/60)"),
-                ("EnhancedL3", ScenarioEnhancedL3Broker(self.params), "Optimiertes L3 + Broker (Max Tax Efficiency)")
+                ("Broker", ScenarioBroker(self.params), "Reines Broker-Depot (Baseline)"),
+                ("RurupBroker", ScenarioRurupBroker(self.params), "Rürup + Broker (Steueroptimiert)"),
+                ("EnhancedL3Broker", ScenarioEnhancedL3Broker(self.params), "L3 + Broker Optimiert (Max Tax Efficiency)")
             ]
             
             for name, scenario, description in self.scenarios:
@@ -176,13 +174,13 @@ class RetirementAnalyzer:
             # Create visualizer
             visualizer = RetirementVisualizer(self.params)
             
-            # Generate all charts
+            # Generate 5 simplified, focused charts
             charts = [
-                ("Portfolio-Wachstum", "portfolio_growth.png", visualizer.create_portfolio_growth_chart),
-                ("Ruhestandseinkommen", "retirement_income.png", visualizer.create_retirement_income_chart),
-                ("Steuereffizienz", "tax_efficiency.png", visualizer.create_tax_efficiency_chart),
-                ("Risiko-Analyse", "risk_analysis.png", visualizer.create_risk_analysis_dashboard),
-                ("Entscheidungsunterstützung", "decision_support.png", visualizer.create_decision_support_dashboard)
+                ("Vermögens-Trajektorien (P10/P50/P90)", "graph1_probability_bands.png", visualizer.create_probability_bands_chart),
+                ("Erfolgswahrscheinlichkeit", "graph2_success_comparison.png", visualizer.create_success_comparison_chart),
+                ("Einkommenszusammensetzung", "graph3_income_composition.png", visualizer.create_income_composition_chart),
+                ("Szenario-Vergleich", "graph4_metrics_table.png", visualizer.create_metrics_table_chart),
+                ("Risiko-Rendite", "graph5_risk_return.png", visualizer.create_risk_return_scatter_chart)
             ]
             
             for chart_name, filename, chart_function in charts:

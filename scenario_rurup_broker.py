@@ -78,8 +78,9 @@ class ScenarioRurupBroker(Scenario):
             frac = 1.0 / self.params.glide_path_years
             shift_equity_to_bonds(pot, frac, self.params.cg_tax_normal)
 
-        pot.br_eq = safe_multiply(pot.br_eq, 1 + rand_returns["eq"] - self.params.fund_fee)
-        pot.br_bd = safe_multiply(pot.br_bd, 1 + rand_returns["bd"] - self.params.fund_fee)
+        # FIXED: Use multiplicative fee compounding (1 + return) * (1 - fee), not additive
+        pot.br_eq = safe_multiply(pot.br_eq, (1 + rand_returns["eq"]) * (1 - self.params.fund_fee))
+        pot.br_bd = safe_multiply(pot.br_bd, (1 + rand_returns["bd"]) * (1 - self.params.fund_fee))
 
         needed_broker = max(0, needed_net - net_ann)
         withdrawn = withdraw(pot, needed_broker, self.params.cg_tax_normal)
