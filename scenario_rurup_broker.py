@@ -36,6 +36,15 @@ class ScenarioRurupBroker(Scenario):
             ann_c *= 1.02
 
 
+        # FIXED: Final year growth step was missing, biasing the comparison
+        if eq_returns is None or len(eq_returns) <= self.params.years_accum:
+            raise ValueError("Bootstrapped returns are required for final year")
+        final_eq_r = eq_returns[self.params.years_accum]
+        
+        # Use multiplicative compounding for fees
+        rp *= (1 + final_eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+        br *= (1 + final_eq_r) * (1 - self.params.fund_fee)
+
         # store rp in eq, unify at retirement to net_ann
         pot.rurup = rp
         pot.br_eq = br

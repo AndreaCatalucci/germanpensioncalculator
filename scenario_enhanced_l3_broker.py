@@ -46,9 +46,9 @@ class ScenarioEnhancedL3Broker(Scenario):
                 ) / self.early_shift_years
 
             # Grow existing investments
-            l3_eq *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
-            br_eq *= 1 + eq_r - self.params.fund_fee
-            br_bd *= 1 + bd_r - self.params.fund_fee
+            l3_eq *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+            br_eq *= (1 + eq_r) * (1 - self.params.fund_fee)
+            br_bd *= (1 + bd_r) * (1 - self.params.fund_fee)
 
             # Allocate new contributions
             c_l3 = c * self.proportion_l3
@@ -72,9 +72,9 @@ class ScenarioEnhancedL3Broker(Scenario):
         final_eq_r = eq_returns[self.params.years_accum]
         final_bd_r = bd_returns[self.params.years_accum]
 
-        l3_eq *= 1 + final_eq_r - self.params.fund_fee - self.params.pension_fee
-        br_eq *= 1 + final_eq_r - self.params.fund_fee
-        br_bd *= 1 + final_bd_r - self.params.fund_fee
+        l3_eq *= (1 + final_eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+        br_eq *= (1 + final_eq_r) * (1 - self.params.fund_fee)
+        br_bd *= (1 + final_bd_r) * (1 - self.params.fund_fee)
 
         pot.l3_eq = l3_eq
         pot.l3_eq_bs = l3_eq_bs
@@ -103,8 +103,8 @@ class ScenarioEnhancedL3Broker(Scenario):
         # Grow the portfolio
         eq_r = rand_returns["eq"]
         bd_r = rand_returns["bd"]
-        pot.br_eq *= 1 + eq_r - self.params.fund_fee
-        pot.br_bd *= 1 + bd_r - self.params.fund_fee
+        pot.br_eq *= (1 + eq_r) * (1 - self.params.fund_fee)
+        pot.br_bd *= (1 + bd_r) * (1 - self.params.fund_fee)
 
         # Dynamic withdrawal strategy
         total_portfolio = pot.br_eq + pot.br_bd + pot.l3_eq

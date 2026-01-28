@@ -15,7 +15,7 @@ class ScenarioBroker(Scenario):
             if eq_returns is None:
                 raise ValueError("Bootstrapped returns are required")
             eq_r = eq_returns[year]
-            eq_val *= 1 + eq_r - self.params.fund_fee
+            eq_val *= (1 + eq_r) * (1 - self.params.fund_fee)
             eq_val += ann_contr
             bs_val += ann_contr
             ann_contr *= 1.02
@@ -24,7 +24,7 @@ class ScenarioBroker(Scenario):
         if eq_returns is None or len(eq_returns) <= self.params.years_accum:
             raise ValueError("Bootstrapped returns are required for final year")
         final_eq_r = eq_returns[self.params.years_accum]
-        eq_val *= 1 + final_eq_r - self.params.fund_fee
+        eq_val *= (1 + final_eq_r) * (1 - self.params.fund_fee)
         pot.br_eq = eq_val
         pot.br_eq_bs = bs_val
         return pot
@@ -43,8 +43,8 @@ class ScenarioBroker(Scenario):
 
         eq_r = rand_returns["eq"]
         bd_r = rand_returns["bd"]
-        pot.br_eq = safe_multiply(pot.br_eq, 1 + eq_r - self.params.fund_fee)
-        pot.br_bd = safe_multiply(pot.br_bd, 1 + bd_r - self.params.fund_fee)
+        pot.br_eq = safe_multiply(pot.br_eq, (1 + eq_r) * (1 - self.params.fund_fee))
+        pot.br_bd = safe_multiply(pot.br_bd, (1 + bd_r) * (1 - self.params.fund_fee))
 
         withdrawn = withdraw(
             pot, max(0, needed_net - net_ann), self.params.cg_tax_normal

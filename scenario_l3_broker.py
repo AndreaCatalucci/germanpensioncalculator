@@ -26,9 +26,9 @@ class ScenarioL3Broker(Scenario):
             eq_r = eq_returns[year]
             bd_r = bd_returns[year]
 
-            l3_eq *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
-            br_eq *= 1 + eq_r - self.params.fund_fee
-            br_bd *= 1 + bd_r - self.params.fund_fee
+            l3_eq *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+            br_eq *= (1 + eq_r) * (1 - self.params.fund_fee)
+            br_bd *= (1 + bd_r) * (1 - self.params.fund_fee)
 
             c_l3 = c * proportion_l3
             c_br = c * (1 - proportion_l3)
@@ -44,9 +44,9 @@ class ScenarioL3Broker(Scenario):
         final_eq_r = eq_returns[self.params.years_accum]
         final_bd_r = bd_returns[self.params.years_accum]
 
-        l3_eq *= 1 + final_eq_r - self.params.fund_fee - self.params.pension_fee
-        br_eq *= 1 + final_eq_r - self.params.fund_fee
-        br_bd *= 1 + final_bd_r - self.params.fund_fee
+        l3_eq *= (1 + final_eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+        br_eq *= (1 + final_eq_r) * (1 - self.params.fund_fee)
+        br_bd *= (1 + final_bd_r) * (1 - self.params.fund_fee)
 
         pot.l3_eq = l3_eq
         pot.l3_eq_bs = l3_eq_bs
@@ -67,8 +67,8 @@ class ScenarioL3Broker(Scenario):
             frac = 1.0 / self.params.glide_path_years
             shift_equity_to_bonds(pot, frac, self.params.cg_tax_normal)
 
-        pot.br_eq *= 1 + rand_returns["eq"] - self.params.fund_fee
-        pot.br_bd *= 1 + rand_returns["bd"] - self.params.fund_fee
+        pot.br_eq *= (1 + rand_returns["eq"]) * (1 - self.params.fund_fee)
+        pot.br_bd *= (1 + rand_returns["bd"]) * (1 - self.params.fund_fee)
 
         # partial withdrawal
         withdrawn = withdraw(

@@ -20,7 +20,7 @@ class ScenarioL3(Scenario):
                 raise ValueError("Bootstrapped returns are required")
             eq_r = eq_returns[year]
 
-            val *= 1 + eq_r - self.params.fund_fee - self.params.pension_fee
+            val *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
             val += c
             bs += c
             c *= 1.02
@@ -29,7 +29,7 @@ class ScenarioL3(Scenario):
         if eq_returns is None or len(eq_returns) <= self.params.years_accum:
             raise ValueError("Bootstrapped returns are required for final year")
         final_eq_r = eq_returns[self.params.years_accum]
-        val *= 1 + final_eq_r - self.params.fund_fee - self.params.pension_fee
+        val *= (1 + final_eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
         pot.l3_eq = val
         pot.l3_eq_bs = bs
         return pot
@@ -46,8 +46,8 @@ class ScenarioL3(Scenario):
             frac = 1.0 / self.params.glide_path_years
             shift_equity_to_bonds(pot, frac, self.params.cg_tax_normal)
 
-        pot.br_eq *= 1 + rand_returns["eq"] - self.params.fund_fee
-        pot.br_bd *= 1 + rand_returns["bd"] - self.params.fund_fee
+        pot.br_eq *= (1 + rand_returns["eq"]) * (1 - self.params.fund_fee)
+        pot.br_bd *= (1 + rand_returns["bd"]) * (1 - self.params.fund_fee)
 
         withdrawn = withdraw(
             pot, max(0, needed_net - net_ann), self.params.cg_tax_normal

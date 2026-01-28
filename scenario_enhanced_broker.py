@@ -45,8 +45,8 @@ class ScenarioEnhancedBroker(Scenario):
                 ) / self.early_shift_years
 
             # Grow existing investments
-            eq_val *= 1 + eq_r - self.params.fund_fee
-            bd_val *= 1 + bd_r - self.params.fund_fee
+            eq_val *= (1 + eq_r) * (1 - self.params.fund_fee)
+            bd_val *= (1 + bd_r) * (1 - self.params.fund_fee)
 
             # Allocate new contributions
             eq_contribution = ann_contr * (1 - bond_allocation)
@@ -65,8 +65,8 @@ class ScenarioEnhancedBroker(Scenario):
         final_eq_r = eq_returns[self.params.years_accum]
         final_bd_r = bd_returns[self.params.years_accum]
 
-        eq_val *= 1 + final_eq_r - self.params.fund_fee
-        bd_val *= 1 + final_bd_r - self.params.fund_fee
+        eq_val *= (1 + final_eq_r) * (1 - self.params.fund_fee)
+        bd_val *= (1 + final_bd_r) * (1 - self.params.fund_fee)
 
         pot.br_eq = eq_val
         pot.br_bd = bd_val
@@ -95,8 +95,8 @@ class ScenarioEnhancedBroker(Scenario):
         # Grow the portfolio
         eq_r = rand_returns["eq"]
         bd_r = rand_returns["bd"]
-        pot.br_eq *= 1 + eq_r - self.params.fund_fee
-        pot.br_bd *= 1 + bd_r - self.params.fund_fee
+        pot.br_eq *= (1 + eq_r) * (1 - self.params.fund_fee)
+        pot.br_bd *= (1 + bd_r) * (1 - self.params.fund_fee)
 
         # Dynamic withdrawal strategy
         total_portfolio = pot.br_eq + pot.br_bd
