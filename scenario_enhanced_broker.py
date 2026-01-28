@@ -44,6 +44,9 @@ class ScenarioEnhancedBroker(Scenario):
                     self.pre_retirement_bond_target - self.initial_bond_allocation
                 ) / self.early_shift_years
 
+            # Capture start values
+            eq_start = eq_val
+
             # Grow existing investments
             eq_val *= (1 + eq_r) * (1 - self.params.fund_fee)
             bd_val *= (1 + bd_r) * (1 - self.params.fund_fee)
@@ -58,6 +61,19 @@ class ScenarioEnhancedBroker(Scenario):
             bs_bd += bd_contribution
 
             ann_contr *= 1.02  # Increase contribution by 2% per year
+            
+            # Vorabpauschale on Broker Equity
+            from scenario_base import calculate_vorabpauschale
+            vp_net = calculate_vorabpauschale(
+                eq_start, eq_val, self.params.basiszins, self.params.tfs_broker
+            )
+            if vp_net > 0:
+                tax = vp_net * self.params.cg_tax_normal
+                if eq_val > 0:
+                    bs_eq -= (tax / eq_val) * bs_eq
+                eq_val -= tax
+                vp_gross = vp_net / (1 - self.params.tfs_broker)
+                bs_eq += vp_gross
 
         # Final year growth
         if eq_returns is None or len(eq_returns) <= self.params.years_accum or bd_returns is None or len(bd_returns) <= self.params.years_accum:

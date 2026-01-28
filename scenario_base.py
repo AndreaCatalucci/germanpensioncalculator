@@ -200,13 +200,55 @@ def present_value(cf: float, year: int, discount_rate: float) -> float:
     return cf / ((1 + safe_discount_rate) ** safe_year)
 
 
+def calculate_vorabpauschale(
+    start_val: float,
+    end_val: float,
+    basiszins: float,
+    tfs: float = 0.30,
+) -> float:
+    """
+    Calculate the Vorabpauschale (Advance Lump Sum Tax) for a capitalization product.
+    
+    Formula:
+    Base Amount = Value at start of year
+    Reference Gain = Base Amount * Basis Zins * 0.7
+    Actual Gain = Value at end - Value at start
+    Taxable Base = max(0, min(Actual Gain, Reference Gain))
+    Taxable Base (Net) = Taxable Base * (1 - TFS)
+    """
+    if start_val <= 0:
+        return 0.0
+        
+    reference_gain = start_val * basiszins * 0.7
+    actual_gain = end_val - start_val
+    
+    # If standard gain is higher than actual gain, use actual gain.
+    # If loss, 0.
+    taxable_base = max(0.0, min(actual_gain, reference_gain))
+    
+    # Apply Partial Exemption (Teilfreistellung)
+    taxable_base_net = taxable_base * (1 - tfs)
+    
+    return taxable_base_net
+
+
 def withdraw(
     pot: Pot,
     net_needed: float,
     cg_tax: float,
+    tax_retirement: float = 0.30, 
     sparerpauschbetrag: float = 1000,
     tfs_broker: float = 0.30,
+    tfs_insurance: float = 0.15,
 ) -> Withdrawal:
+    """
+    Withdraw funds with tax optimization.
+    Prioritization:
+    1. Broker Bonds (Standard rebalancing/safety)
+    2. Broker Equity (Fill Sparerpauschbetrag) - Tax free up to allowance
+    3. L3 Equity (Lower effective tax rate via 12/62 rule)
+    4. Broker Equity (Higher effective tax rate)
+    """
     total_pot = safe_add(pot.br_bd, pot.br_eq, pot.l3_eq)
     if total_pot <= 0:
         return Withdrawal(0.0, 0.0)
@@ -215,55 +257,129 @@ def withdraw(
     gross_withdrawn: float = 0.0
     still_needed: float = net_needed
 
-    # FIXED: Track remaining Sparerpauschbetrag allowance for the year
+    # Track remaining Sparerpauschbetrag allowance for the year
     remaining_allowance: float = sparerpauschbetrag
     
-    # BOND FIRST
+    # 1. BROKER BONDS
     if pot.br_bd > 0:
         gross_gains_bd: float = max(0.0, pot.br_bd - pot.br_bd_bs)
         allowance_used_bd: float = min(remaining_allowance, gross_gains_bd)
         remaining_allowance -= allowance_used_bd
         
-        # Apply tax only to gains above allowance, considering Teilfreistellung
-        # Note: TFS usually applies to equity, but bonds in broker also have basis tracking here.
-        # We focus TFS on equity below. For bonds, we use full taxation.
+        # Bond tax (no TFS usually, or very low)
         taxable_gains_bd: float = max(0.0, gross_gains_bd - allowance_used_bd)
         net_bd: float = pot.br_bd - taxable_gains_bd * cg_tax
         
         portion: float = min(still_needed, net_bd)
         if portion > 0:
-            # FIXED: Calculate fraction based on gross amount for proper proportional withdrawal
             frac: float = portion / net_bd if net_bd > 0 else 0.0
             gross_bd_withdrawal: float = frac * pot.br_bd
-            # FIXED: Proportional basis reduction
+            
+            # Reduce pot
             pot.br_bd_bs = pot.br_bd_bs * (1 - frac)
             pot.br_bd -= gross_bd_withdrawal
+            
             net_withdrawn += portion
             gross_withdrawn += gross_bd_withdrawal
             still_needed -= portion
 
-    # EQUITY NEXT
-    if still_needed > 0 and pot.br_eq > 0:
+    if still_needed <= 0:
+        return Withdrawal(gross_withdrawn, net_withdrawn)
+
+    # 2. BROKER EQUITY - Fill Allowance ONLY
+    # If we still have allowance, try to use it with Equity which has high expected gains
+    if remaining_allowance > 0 and pot.br_eq > 0:
         gross_gains_eq: float = max(0.0, pot.br_eq - pot.br_eq_bs)
-        allowance_used_eq: float = min(remaining_allowance, gross_gains_eq)
         
-        # Apply tax only to gains above remaining allowance WITH Teilfreistellung
-        # TFS: Only (1 - tfs_broker) of gains are taxable
-        taxable_gains_eq_pre_tfs: float = max(0.0, gross_gains_eq - allowance_used_eq)
+        # Calculate how much gross withdrawal we need to fill the allowance
+        # Gain ratio = gains / total_value
+        # Withdrawal needed = Allowance / Gain Ratio
+        if gross_gains_eq > 0:
+            gain_ratio = gross_gains_eq / pot.br_eq
+            gross_to_fill_allowance = remaining_allowance / gain_ratio
+            
+            # Limit to what we actually need
+            # Estimate net from this gross (it's tax free)
+            net_from_allowance = gross_to_fill_allowance # roughly, since tax is 0 on this part
+            
+            amount_to_take_net = min(still_needed, net_from_allowance)
+            # Re-calculate gross for this net amount
+            # Since it's covered by allowance, Gross = Net
+            amount_to_take_gross = amount_to_take_net
+            
+            # Cap at available equity
+            amount_to_take_gross = min(amount_to_take_gross, pot.br_eq)
+            
+            # Apply withdrawal
+            if amount_to_take_gross > 0:
+                frac_al: float = amount_to_take_gross / pot.br_eq
+                
+                # Check actual gain used
+                gain_used = frac_al * gross_gains_eq
+                remaining_allowance -= min(remaining_allowance, gain_used)
+                
+                pot.br_eq_bs = pot.br_eq_bs * (1 - frac_al)
+                pot.br_eq -= amount_to_take_gross
+                
+                net_withdrawn += amount_to_take_gross
+                gross_withdrawn += amount_to_take_gross
+                still_needed -= amount_to_take_gross
+
+    if still_needed <= 0:
+        return Withdrawal(gross_withdrawn, net_withdrawn)
+
+    # 3. L3 EQUITY (12/62 Rule)
+    # Effective tax rate is usually lower than Broker
+    # Taxable = Gain * (1 - TFS_Ins) * 0.5
+    # Tax = Taxable * PersonalRate
+    if pot.l3_eq > 0:
+        gross_gains_l3: float = max(0.0, pot.l3_eq - pot.l3_eq_bs)
+        # Calculate effective tax rate on total L3 balance
+        # Tax = (Gain * (1-TFS) * 0.5) * TaxRate
+        # Net = Total - Tax
+        
+        taxable_part_l3 = gross_gains_l3 * (1 - tfs_insurance) * 0.5
+        total_tax_l3 = taxable_part_l3 * tax_retirement
+        net_l3_available = pot.l3_eq - total_tax_l3
+        
+        portion_l3 = min(still_needed, net_l3_available)
+        
+        if portion_l3 > 0:
+            frac_l3 = portion_l3 / net_l3_available if net_l3_available > 0 else 0.0
+            gross_l3_withdrawal = frac_l3 * pot.l3_eq
+            
+            pot.l3_eq_bs = pot.l3_eq_bs * (1 - frac_l3)
+            pot.l3_eq -= gross_l3_withdrawal
+            
+            net_withdrawn += portion_l3
+            gross_withdrawn += gross_l3_withdrawal
+            still_needed -= portion_l3
+
+    if still_needed <= 0:
+        return Withdrawal(gross_withdrawn, net_withdrawn)
+
+    # 4. BROKER EQUITY - Remaining
+    if pot.br_eq > 0:
+        gross_gains_eq: float = max(0.0, pot.br_eq - pot.br_eq_bs)
+        
+        # Allowance is 0 here (used in step 2)
+        allowance_used_eq: float = 0.0
+        
+        taxable_gains_eq_pre_tfs: float = max(0.0, gross_gains_eq)
         taxable_gains_eq: float = taxable_gains_eq_pre_tfs * (1 - tfs_broker)
         net_eq: float = pot.br_eq - taxable_gains_eq * cg_tax
         
-        portion2: float = min(still_needed, net_eq)
-        if portion2 > 0:
-            # FIXED: Calculate fraction based on net amount with safety check
-            frac2: float = portion2 / net_eq if net_eq > 0 else 0.0
-            gross_eq_withdrawal: float = frac2 * pot.br_eq
-            # FIXED: Proportional basis reduction
-            pot.br_eq_bs = pot.br_eq_bs * (1 - frac2)
+        portion4: float = min(still_needed, net_eq)
+        if portion4 > 0:
+            frac4: float = portion4 / net_eq if net_eq > 0 else 0.0
+            gross_eq_withdrawal: float = frac4 * pot.br_eq
+            
+            pot.br_eq_bs = pot.br_eq_bs * (1 - frac4)
             pot.br_eq = safe_subtract(pot.br_eq, gross_eq_withdrawal)
-            net_withdrawn += portion2
+            
+            net_withdrawn += portion4
             gross_withdrawn += gross_eq_withdrawal
-            still_needed -= portion2
+            still_needed -= portion4
 
     return Withdrawal(gross_withdrawn, net_withdrawn)
 

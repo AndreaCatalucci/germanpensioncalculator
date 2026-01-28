@@ -27,7 +27,11 @@ class ScenarioL3Broker(Scenario):
             bd_r = bd_returns[year]
 
             l3_eq *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+            
+            # Broker Growth & VP
+            br_eq_start = br_eq
             br_eq *= (1 + eq_r) * (1 - self.params.fund_fee)
+            
             br_bd *= (1 + bd_r) * (1 - self.params.fund_fee)
 
             c_l3 = c * proportion_l3
@@ -37,6 +41,19 @@ class ScenarioL3Broker(Scenario):
             br_eq += c_br
             br_eq_bs += c_br
             c *= 1.02
+            
+            # Vorabpauschale on Broker Equity
+            from scenario_base import calculate_vorabpauschale
+            vp_net = calculate_vorabpauschale(
+                br_eq_start, br_eq, self.params.basiszins, self.params.tfs_broker
+            )
+            if vp_net > 0:
+                tax = vp_net * self.params.cg_tax_normal
+                if br_eq > 0:
+                    br_eq_bs -= (tax / br_eq) * br_eq_bs
+                br_eq -= tax
+                vp_gross = vp_net / (1 - self.params.tfs_broker)
+                br_eq_bs += vp_gross
 
         # Final year growth
         if eq_returns is None or len(eq_returns) <= self.params.years_accum or bd_returns is None or len(bd_returns) <= self.params.years_accum:
@@ -52,6 +69,22 @@ class ScenarioL3Broker(Scenario):
         pot.l3_eq_bs = l3_eq_bs
         pot.br_eq, pot.br_bd = br_eq, br_bd
         pot.br_eq_bs, pot.br_bd_bs = br_eq_bs, br_bd_bs
+        pot.br_eq_bs, pot.br_bd_bs = br_eq_bs, br_bd_bs
+        return pot
+
+    def transition_year(
+        self, pot: Pot, current_year: int, eq_r: float, bd_r: float
+    ) -> Pot:
+        """
+        Override transition_year to simple growth WITHOUT L3 liquidation.
+        We keep L3 tax-deferred until withdrawal (12/62 rule).
+        """
+        # 1. Grow Components
+        pot.rurup *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+        pot.l3_eq *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+        pot.br_eq *= (1 + eq_r) * (1 - self.params.fund_fee)
+        pot.br_bd *= (1 + bd_r) * (1 - self.params.fund_fee)
+        
         return pot
 
     def decumulate_year(
@@ -69,6 +102,7 @@ class ScenarioL3Broker(Scenario):
 
         pot.br_eq *= (1 + rand_returns["eq"]) * (1 - self.params.fund_fee)
         pot.br_bd *= (1 + rand_returns["bd"]) * (1 - self.params.fund_fee)
+        pot.l3_eq *= (1 + rand_returns["eq"]) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
 
         # partial withdrawal
         withdrawn = withdraw(

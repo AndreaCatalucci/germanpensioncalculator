@@ -448,24 +448,36 @@ class RetirementVisualizer:
         
         # Age-based recommendations (bottom left)
         ages = [30, 40, 50, 60]
-        recommendations = {
-            30: [0.9, 0.7, 0.8, 0.6],  # Aggressive growth focus
-            40: [0.8, 0.8, 0.7, 0.7],  # Balanced approach
-            50: [0.6, 0.9, 0.6, 0.8],  # Risk reduction
-            60: [0.4, 0.9, 0.5, 0.9]   # Conservative approach
-        }
         
         for i, name in enumerate(scenario_names):
-            values = [recommendations[age][i] for age in ages]
+            values = []
+            res = scenarios_data[i].scenario_results
+            for age in ages:
+                # Dynamic scoring based on scenario traits
+                score = 0.6 # Base
+                
+                if age < 45:
+                    # Focus on growth and flexibility
+                    if 'Broker' in name: score += 0.2
+                    if 'Enhanced' in name: score += 0.1
+                    if 'Rurup' in name: score -= 0.1
+                else:
+                    # Focus on security and guaranteed income
+                    if 'Rurup' in name: score += 0.3
+                    if res['prob_runout'] < 0.05: score += 0.1
+                    if 'Broker' in name: score -= 0.1
+                
+                values.append(np.clip(score, 0, 1))
+                
             ax3.plot(ages, values, 'o-', label=name, 
-                    color=list(COLORS.values())[i], linewidth=2, markersize=6)
+                    color=list(COLORS.values())[i % len(COLORS)], linewidth=2, markersize=6)
         
         ax3.set_xlabel("Aktuelles Alter")
         ax3.set_ylabel("Empfehlungsgrad (0-1)")
         ax3.set_title("Altersbasierte Empfehlungen", fontweight='bold')
-        ax3.legend()
+        ax3.legend(fontsize=8)
         ax3.grid(True, alpha=0.3)
-        ax3.set_ylim(0, 1)
+        ax3.set_ylim(0, 1.2)
         
         # Summary recommendations (bottom right)
         ax4.axis('off')

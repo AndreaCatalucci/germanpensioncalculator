@@ -15,10 +15,32 @@ class ScenarioBroker(Scenario):
             if eq_returns is None:
                 raise ValueError("Bootstrapped returns are required")
             eq_r = eq_returns[year]
+            
+            # 1. Capture start values for Vorabpauschale
+            eq_start = eq_val
+            
+            # 2. Apply Growth
             eq_val *= (1 + eq_r) * (1 - self.params.fund_fee)
             eq_val += ann_contr
             bs_val += ann_contr
             ann_contr *= 1.02
+            
+            # 3. Calculate and Deduct Vorabpauschale (on the equity portion)
+            from scenario_base import calculate_vorabpauschale
+            vp_net = calculate_vorabpauschale(
+                eq_start, eq_val, self.params.basiszins, self.params.tfs_broker
+            )
+            if vp_net > 0:
+                tax = vp_net * self.params.cg_tax_normal
+                # Pay tax from pot (sell-to-cover)
+                # Proportional basis reduction due to sale
+                if eq_val > 0:
+                    bs_val -= (tax / eq_val) * bs_val
+                eq_val -= tax
+                
+                # Step up basis by Gross VP
+                vp_gross = vp_net / (1 - self.params.tfs_broker)
+                bs_val += vp_gross
 
         # Final year growth
         if eq_returns is None or len(eq_returns) <= self.params.years_accum:

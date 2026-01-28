@@ -47,6 +47,8 @@ class ScenarioEnhancedL3Broker(Scenario):
 
             # Grow existing investments
             l3_eq *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+            
+            br_eq_start = br_eq
             br_eq *= (1 + eq_r) * (1 - self.params.fund_fee)
             br_bd *= (1 + bd_r) * (1 - self.params.fund_fee)
 
@@ -65,6 +67,19 @@ class ScenarioEnhancedL3Broker(Scenario):
             br_bd_bs += c_br * bond_allocation
 
             c *= 1.02  # Increase contribution by 2% per year
+            
+            # Vorabpauschale (Equity only for simplicity, though bonds also taxable)
+            from scenario_base import calculate_vorabpauschale
+            vp_net = calculate_vorabpauschale(
+                br_eq_start, br_eq, self.params.basiszins, self.params.tfs_broker
+            )
+            if vp_net > 0:
+                tax = vp_net * self.params.cg_tax_normal
+                if br_eq > 0:
+                    br_eq_bs -= (tax / br_eq) * br_eq_bs
+                br_eq -= tax
+                vp_gross = vp_net / (1 - self.params.tfs_broker)
+                br_eq_bs += vp_gross
 
         # Final year growth
         if eq_returns is None or len(eq_returns) <= self.params.years_accum or bd_returns is None or len(bd_returns) <= self.params.years_accum:
@@ -80,6 +95,23 @@ class ScenarioEnhancedL3Broker(Scenario):
         pot.l3_eq_bs = l3_eq_bs
         pot.br_eq, pot.br_bd = br_eq, br_bd
         pot.br_eq_bs, pot.br_bd_bs = br_eq_bs, br_bd_bs
+        return pot
+
+    def transition_year(
+        self, pot: Pot, current_year: int, eq_r: float, bd_r: float
+    ) -> Pot:
+        """
+        Override transition_year to simple growth WITHOUT L3 liquidation.
+        We keep L3 tax-deferred until withdrawal.
+        """
+        # 1. Grow Components
+        pot.rurup *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+        pot.l3_eq *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
+        pot.br_eq *= (1 + eq_r) * (1 - self.params.fund_fee)
+        pot.br_bd *= (1 + bd_r) * (1 - self.params.fund_fee)
+        
+        # 2. No L3 Liquidation logic here!
+        
         return pot
 
     def decumulate_year(
@@ -105,6 +137,7 @@ class ScenarioEnhancedL3Broker(Scenario):
         bd_r = rand_returns["bd"]
         pot.br_eq *= (1 + eq_r) * (1 - self.params.fund_fee)
         pot.br_bd *= (1 + bd_r) * (1 - self.params.fund_fee)
+        pot.l3_eq *= (1 + eq_r) * (1 - self.params.fund_fee) * (1 - self.params.pension_fee)
 
         # Dynamic withdrawal strategy
         total_portfolio = pot.br_eq + pot.br_bd + pot.l3_eq

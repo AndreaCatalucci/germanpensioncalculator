@@ -26,6 +26,8 @@ from simulation import simulate_montecarlo, SimulationResult
 from scenario_broker import ScenarioBroker
 from scenario_rurup_broker import ScenarioRurupBroker
 from scenario_l3_broker import ScenarioL3Broker
+from scenario_enhanced_broker import ScenarioEnhancedBroker
+from scenario_enhanced_l3_broker import ScenarioEnhancedL3Broker
 from visualizations import VisualizationData, RetirementVisualizer
 
 if TYPE_CHECKING:
@@ -81,8 +83,10 @@ class RetirementAnalyzer:
             assert self.params is not None
             self.scenarios = [
                 ("Broker", ScenarioBroker(self.params), "Reines Broker-Depot"),
-                ("RurupBroker", ScenarioRurupBroker(self.params), "Rürup + Broker (Steuererstattung investiert)"),
-                ("L3Broker", ScenarioL3Broker(self.params), "Schicht 3 + Broker (40/60 Aufteilung)")
+                ("EnhancedBroker", ScenarioEnhancedBroker(self.params), "Optimiertes Broker-Depot (Dynamic WD)"),
+                ("RurupBroker", ScenarioRurupBroker(self.params), "Rürup + Broker (Refund investiert)"),
+                ("L3Broker", ScenarioL3Broker(self.params), "Schicht 3 + Broker (40/60)"),
+                ("EnhancedL3", ScenarioEnhancedL3Broker(self.params), "Optimiertes L3 + Broker (Max Tax Efficiency)")
             ]
             
             for name, scenario, description in self.scenarios:

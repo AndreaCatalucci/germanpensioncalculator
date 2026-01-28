@@ -28,12 +28,27 @@ class ScenarioRurupBroker(Scenario):
             
             # broker invests refund
             ref_ = ann_c * self.params.tax_working
+            
+            br_start = br
             growth_factor_br = (1 + eq_r) * (1 - self.params.fund_fee)
             br *= growth_factor_br
             br += ref_
             br_bs += ref_
 
             ann_c *= 1.02
+            
+            # Vorabpauschale on Broker
+            from scenario_base import calculate_vorabpauschale
+            vp_net = calculate_vorabpauschale(
+                br_start, br, self.params.basiszins, self.params.tfs_broker
+            )
+            if vp_net > 0:
+                tax = vp_net * self.params.cg_tax_normal
+                if br > 0:
+                    br_bs -= (tax / br) * br_bs
+                br -= tax
+                vp_gross = vp_net / (1 - self.params.tfs_broker)
+                br_bs += vp_gross
 
 
         # FIXED: Final year growth step was missing, biasing the comparison
